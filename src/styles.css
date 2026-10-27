@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn/ui theme tokens */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --success: oklch(0.527 0.154 150.069);
+  --warning: oklch(0.769 0.188 70.08);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --success: oklch(0.723 0.219 149.579);
+  --warning: oklch(0.828 0.189 84.429);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ---------- Labels (size set on the label page; --s scales a 30mm-wide design) ----------
+   Kept as plain CSS: the sizes are physical mm computed at runtime, which utility classes can't express. */
+@layer components {
+  /* --label-margin and --label-border come from the Margin and Border options on the label page. */
+  .label {
+    --s: 1;
+    flex: none; background: #fff; color: #000;
+    border: var(--label-border, 0.3mm solid #000); margin: var(--label-margin, 0);
+    display: flex; flex-direction: column; align-items: center;
+    padding: calc(3mm * var(--s)) calc(1.5mm * var(--s)); overflow: hidden;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .label-head {
+    width: 100%; text-align: center; background: #000; color: #fff;
+    font-size: calc(3mm * var(--s)); font-weight: 700; letter-spacing: calc(0.5mm * var(--s));
+    padding: calc(1mm * var(--s)) 0;
+  }
+  .label-area {
+    width: 100%; text-align: center; font-size: calc(3.4mm * var(--s)); font-weight: 600;
+    padding: calc(2mm * var(--s)) 0; border-bottom: 0.3mm solid #000; word-break: break-word;
+  }
+  .label-area.linked { white-space: nowrap; overflow: hidden; line-height: 1.1; }
+  .label-name {
+    flex: 1; min-height: 0; width: 100%; margin: calc(2mm * var(--s)) 0;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .label-name span { font-weight: 800; line-height: 1; white-space: nowrap; }
+  .label.vertical .label-name span { writing-mode: vertical-rl; transform: rotate(180deg); }
+  .label-foot {
+    width: 100%; text-align: center; font-size: calc(2.6mm * var(--s));
+    border-top: 0.3mm solid #000; padding-top: calc(1.5mm * var(--s));
+  }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .label-page { background: none; padding: 0; min-height: 0; }
+  .mode-label .label-sheet { display: block; }
+  /* On label paper the @page margin provides the space, since margins at page breaks get dropped. */
+  .mode-label .label { break-after: page; margin: 0; }
+  .mode-a4 .label { break-inside: avoid; }
+}

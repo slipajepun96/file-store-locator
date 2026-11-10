@@ -2,7 +2,7 @@ import './env.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SETTINGS, initDb, pool, query, saveSettings } from './db.js';
+import { DEFAULT_SETTINGS, ensureDefaultOffice, initDb, pool, query, saveSettings } from './db.js';
 
 // One-time move from the old data.json store into MySQL: npm run db:import [path/to/data.json]
 // Run it before the first start so the database is still empty. Sessions aren't copied; everyone signs in again.
@@ -35,7 +35,11 @@ try {
       u.status ?? 'active', date(u.createdAt) ?? new Date(), date(u.approvedAt), u.approvedBy ?? null, date(u.lastLoginAt),
     ])
   );
-  await insert(conn, 'areas', ['id', 'name'], (data.areas ?? []).map((a) => [a.id, a.name]));
+  // data.json has no offices, so every area goes into one "Main office".
+  if (data.areas?.length) {
+    const officeId = await ensureDefaultOffice(conn);
+    await insert(conn, 'areas', ['id', 'office_id', 'name'], data.areas.map((a) => [a.id, officeId, a.name]));
+  }
   await insert(
     conn,
     'boxes',

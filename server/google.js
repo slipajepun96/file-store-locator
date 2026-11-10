@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { query, toUser } from './db.js';
 import { startSession } from './auth.js';
+import { recordAudit } from './audit.js';
 
 // Google OAuth 2.0 (authorization code + PKCE), done on the server so no secret reaches the browser.
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -26,7 +27,7 @@ function redirectUri(req) {
 const b64url = (buf) => buf.toString('base64url');
 
 export function startGoogleLogin(req, res) {
-  if (!googleConfigured()) return res.redirect('/login?status=google-off');
+  if (!googleConfigured()) return res.redirect('/?status=google-off');
   const state = b64url(crypto.randomBytes(24));
   const verifier = b64url(crypto.randomBytes(32));
   const challenge = b64url(crypto.createHash('sha256').update(verifier).digest());
@@ -138,18 +139,30 @@ export async function resolveGoogleUser(profile) {
 export async function finishGoogleLogin(req, res) {
   const { state, verifier } = readStateCookie(req);
   res.clearCookie(STATE_COOKIE, { path: '/api/auth/google' });
-  if (req.query.error) return res.redirect('/login?status=cancelled');
+  if (req.query.error) return res.redirect('/?status=cancelled');
   if (!state || !verifier || req.query.state !== state || typeof req.query.code !== 'string')
-    return res.redirect('/login?status=error');
+    return res.redirect('/?status=error');
   try {
     const user = await resolveGoogleUser(await exchangeCode(req, req.query.code, verifier));
-    if (!user) return res.redirect('/login?status=unverified');
-    if (user.status === 'pending') return res.redirect('/login?status=pending');
-    if (user.status === 'rejected') return res.redirect('/login?status=rejected');
+    if (!user) return res.redirect('/?status=unverified');
+    // Google sign-ins come in as a GET, which the audit middleware leaves alone, so they're recorded here.
+    const log = (action, summary) =>
+      recordAudit(req, { actor: user, action, summary, method: 'GET', path: '/api/auth/google', statusCode: 302 }).catch((err) =>
+        console.error('Could not write audit entry:', err.message)
+      );
+    if (user.status === 'pending') {
+      log('auth.request', `Requested access with Google (${user.email})`);
+      return res.redirect('/?status=pending');
+    }
+    if (user.status === 'rejected') {
+      log('auth.login_blocked', `Google sign-in refused: account not approved (${user.email})`);
+      return res.redirect('/?status=rejected');
+    }
     await startSession(res, user.id);
+    log('auth.login', 'Signed in with Google');
     res.redirect('/');
   } catch (err) {
     console.error(err.message);
-    res.redirect('/login?status=error');
+    res.redirect('/?status=error');
   }
 }

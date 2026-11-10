@@ -73,23 +73,29 @@ export const publicUser = (u) => ({
   email: u.email,
   role: u.role,
   status: u.status,
+  officeId: u.officeId ?? null,
   google: Boolean(u.googleId),
   hasPassword: Boolean(u.passwordHash),
   createdAt: u.createdAt,
   lastLoginAt: u.lastLoginAt,
 });
 
+// The user this request's session cookie belongs to, or null.
+export async function sessionUser(req) {
+  const token = readCookie(req, COOKIE);
+  const [row] = token
+    ? await query(
+        'SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?',
+        [sha256(token), new Date()]
+      )
+    : [];
+  return toUser(row) ?? null;
+}
+
 // ---- Middleware ----
 export async function requireAuth(req, res, next) {
   try {
-    const token = readCookie(req, COOKIE);
-    const [row] = token
-      ? await query(
-          'SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?',
-          [sha256(token), new Date()]
-        )
-      : [];
-    const user = toUser(row);
+    const user = await sessionUser(req);
     if (!user || !isActive(user)) return res.status(401).json({ error: 'Please sign in.' });
     req.user = user;
     next();
@@ -100,6 +106,18 @@ export async function requireAuth(req, res, next) {
 
 export function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admins only.' });
+  next();
+}
+
+// ---- Offices ----
+// Admins manage every office; an office admin manages only the office they're assigned to.
+export const isManager = (u) => u?.role === 'admin' || (u?.role === 'office_admin' && Boolean(u.officeId));
+export const canManageOffice = (u, officeId) =>
+  u?.role === 'admin' || (u?.role === 'office_admin' && Boolean(officeId) && u.officeId === officeId);
+
+// Admins and office admins: the Admin page's areas, boxes and workers.
+export function requireManager(req, res, next) {
+  if (!isManager(req.user)) return res.status(403).json({ error: 'Admins and office admins only.' });
   next();
 }
 

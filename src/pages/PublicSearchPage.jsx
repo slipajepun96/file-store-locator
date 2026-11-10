@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Archive, MapPin, Package, Search } from 'lucide-react';
+import { Archive, Building2, MapPin, Package, Search } from 'lucide-react';
 import { api } from '@/api.js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
 const MIN_QUERY = 2;
 
-// Public lookup at /find: anyone can type a file name and see which box and area it's in, without signing in.
+// Public lookup at /find: anyone can type a file name and see which office, box and area it's in, without signing in.
 export default function PublicSearchPage() {
   const [params, setParams] = useSearchParams();
   const q = params.get('q') ?? '';
@@ -33,12 +33,12 @@ export default function PublicSearchPage() {
   }, [q]);
 
   return (
-    <div className="mx-auto grid min-h-screen max-w-2xl content-start gap-6 px-4 py-10">
+    <div className="mx-auto grid min-h-screen max-w-2xl content-start gap-4 px-3 py-4 sm:gap-6 sm:px-4 sm:py-10">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 font-semibold">
-          <Package className="size-5" /> File Store Locator
+          <Package className="size-5 text-primary" /> File Store Locator
         </div>
-        <Link to="/login" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+        <Link to="/" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
           Staff sign in
         </Link>
       </div>
@@ -46,7 +46,7 @@ export default function PublicSearchPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Where is my file?</CardTitle>
-          <CardDescription>Type the file name to see which box and area it is stored in.</CardDescription>
+          <CardDescription>Type the file name to see which office, box and area it is stored in.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
           <div className="relative">
@@ -74,10 +74,11 @@ export default function PublicSearchPage() {
               {result.files.map((f) => (
                 <li key={f.fileNumber} className="grid gap-2 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:items-center">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{f.name}</p>
+                    <p className="font-medium break-words">{f.name}</p>
                     <p className="text-sm text-muted-foreground">File no. {f.fileNumber}</p>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                    <span className="flex items-center gap-1.5"><Building2 className="size-4 text-muted-foreground" /> Office <strong>{f.officeName}</strong></span>
                     <span className="flex items-center gap-1.5"><Archive className="size-4 text-muted-foreground" /> Box <strong>{f.boxName}</strong></span>
                     <span className="flex items-center gap-1.5"><MapPin className="size-4 text-muted-foreground" /> Area <strong>{f.areaName}</strong></span>
                   </div>

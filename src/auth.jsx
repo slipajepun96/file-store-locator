@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import { api, setUnauthorizedHandler } from '@/api.js';
 
 const AuthContext = createContext(null);
@@ -26,16 +26,24 @@ export function AuthProvider({ children }) {
 
 export const useAuth = () => useContext(AuthContext);
 
-export function RequireAuth() {
+// Signed-out visitors get the sign-in form (fallback) on the page they opened, and that page once they're in.
+export function RequireAuth({ fallback }) {
   const { user, loading } = useAuth();
-  const location = useLocation();
   if (loading) return <p className="mt-[40vh] text-center text-muted-foreground">Loading…</p>;
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  if (!user) return fallback;
   return <Outlet />;
 }
 
-export function RequireAdmin() {
+// Admins manage every office; an office admin manages only their own office.
+export const isManager = (u) => u?.role === 'admin' || (u?.role === 'office_admin' && Boolean(u.officeId));
+export const canManageOffice = (u, officeId) =>
+  u?.role === 'admin' || (u?.role === 'office_admin' && Boolean(officeId) && u.officeId === officeId);
+
+export const ROLE_NAMES = { admin: 'Admin', office_admin: 'Office admin', worker: 'Worker' };
+
+// The Settings page: admins and office admins.
+export function RequireManager() {
   const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+  if (!isManager(user)) return <Navigate to="/" replace />;
   return <Outlet />;
 }

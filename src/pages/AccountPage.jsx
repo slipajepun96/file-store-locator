@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '@/api.js';
-import { useAuth } from '@/auth.jsx';
+import { ROLE_NAMES, useAuth } from '@/auth.jsx';
+import { useOffices } from '@/office.jsx';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,6 +9,7 @@ import { Label } from '@/components/ui/label';
 
 export default function AccountPage() {
   const { user } = useAuth();
+  const { officeName } = useOffices();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [message, setMessage] = useState(null);
 
@@ -29,7 +31,8 @@ export default function AccountPage() {
     <Card className="max-w-lg">
       <CardHeader>
         <CardTitle className="text-2xl">My Account</CardTitle>
-        <CardDescription>{user.name} · {user.email || `@${user.username}`} · {user.role}</CardDescription>
+        <CardDescription>{user.name} · {user.email || `@${user.username}`} · {ROLE_NAMES[user.role] ?? user.role}
+          {user.officeId && ` · ${officeName(user.officeId)}`}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {!user.hasPassword && <p className="text-sm">You sign in with Google ({user.email}). There is no password to manage here.</p>}

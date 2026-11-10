@@ -2,12 +2,14 @@
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
+// body is sent as JSON, or as-is when it's a Blob (e.g. a photo, with the Blob's own type).
 async function request(method, url, body) {
+  const isBlob = body instanceof Blob;
   const res = await fetch(`/api${url}`, {
     method,
     credentials: 'same-origin',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: body ? { 'Content-Type': isBlob ? body.type : 'application/json' } : undefined,
+    body: body ? (isBlob ? body : JSON.stringify(body)) : undefined,
   });
   if (res.status === 401 && url !== '/auth/login' && url !== '/auth/me') onUnauthorized();
   if (res.status === 204) return null;

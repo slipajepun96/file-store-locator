@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { api } from '@/api.js';
-import { useAuth } from '@/auth.jsx';
+import { isManager, useAuth } from '@/auth.jsx';
 import Label from '@/components/Label.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const PRESETS = [
   { name: 'Spine 3 × 20 cm', w: 30, h: 200 },
@@ -36,7 +36,7 @@ const boxLabel = (b) => ({
   head: 'FILE BOX',
   sub: b.area?.name ?? '',
   main: b.name,
-  foot: new Date(b.createdAt).toLocaleDateString(),
+  foot: [b.office?.name, new Date(b.createdAt).toLocaleDateString()].filter(Boolean).join(' · '),
 });
 const fileLabel = (f) => ({
   id: f.id,
@@ -47,13 +47,24 @@ const fileLabel = (f) => ({
   foot: `${f.boxName} · ${f.areaName}`,
 });
 
-// /labels?ids=… prints file box labels (admins); /labels?files=… prints file labels (everyone).
+// /labels?ids=… prints file box labels (admins and office admins); /labels?files=… prints file labels (everyone).
 export default function LabelPage() {
   const { user } = useAuth();
   const [params] = useSearchParams();
   const kind = params.has('files') ? 'file' : 'box';
   const ids = (params.get(kind === 'file' ? 'files' : 'ids') ?? '').split(',').filter(Boolean);
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Back returns to the page the labels were opened from (keeping its search); a label page opened directly
+  // (a bookmark or a new tab) has nowhere to go back to, so it goes to Files or Settings.
+  const fallback = kind === 'file' ? '/' : '/settings/boxes';
+  const goBack = (e) => {
+    if (location.key === 'default') return;
+    e.preventDefault();
+    navigate(-1);
+  };
   const isAdmin = user.role === 'admin';
+  const canPrintBoxes = isManager(user);
   const [labels, setLabels] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -84,7 +95,7 @@ export default function LabelPage() {
   }, [kind]);
 
   useEffect(() => {
-    if (kind === 'box' && !isAdmin) return setError('Only admins can print file box labels.');
+    if (kind === 'box' && !canPrintBoxes) return setError('Only admins and office admins can print file box labels.');
     const load = kind === 'file' ? (id) => api.get(`/files/${id}`).then(fileLabel) : (id) => api.get(`/boxes/${id}`).then(boxLabel);
     Promise.all(ids.map(load))
       .then(setLabels)
@@ -140,15 +151,18 @@ export default function LabelPage() {
       <style>{pageCss}</style>
       <div className="no-print mb-4 flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border bg-card p-3 text-sm shadow-sm">
         <Button variant="ghost" size="sm" asChild>
-          {kind === 'file' ? <Link to="/"><ArrowLeft /> Files</Link> : <Link to="/admin"><ArrowLeft /> Admin</Link>}
+          <Link to={fallback} onClick={goBack}><ArrowLeft /> Back</Link>
         </Button>
-        <label className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           Size
-          <NativeSelect size="sm" value={preset} onChange={(e) => choosePreset(e.target.value)}>
-            {PRESETS.map((p) => <NativeSelectOption key={p.name} value={p.name}>{p.name}</NativeSelectOption>)}
-            <NativeSelectOption value="custom" disabled>Custom</NativeSelectOption>
-          </NativeSelect>
-        </label>
+          <Select value={preset} onValueChange={choosePreset}>
+            <SelectTrigger size="sm" aria-label="Label size"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {PRESETS.map((p) => <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>)}
+              <SelectItem value="custom" disabled>Custom</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <span className="flex items-center gap-1.5">
           <Input className={numberInput} type="number" min={MIN_MM} max={MAX_MM} step="0.5" value={size.w} onChange={setDim('w')} aria-label="Width in mm" />
           ×
@@ -160,13 +174,16 @@ export default function LabelPage() {
             {isSaved ? 'Default size' : 'Save as default'}
           </Button>
         )}
-        <label className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           Paper
-          <NativeSelect size="sm" value={mode} onChange={(e) => setMode(e.target.value)}>
-            <NativeSelectOption value="a4">A4 sheet (cut out)</NativeSelectOption>
-            <NativeSelectOption value="label">Label paper (one label per page)</NativeSelectOption>
-          </NativeSelect>
-        </label>
+          <Select value={mode} onValueChange={setMode}>
+            <SelectTrigger size="sm" aria-label="Paper"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="a4">A4 sheet (cut out)</SelectItem>
+              <SelectItem value="label">Label paper (one label per page)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <span className="flex items-center gap-1.5">
           Margin
           <Input
@@ -181,12 +198,15 @@ export default function LabelPage() {
           />
           <span className="text-muted-foreground">mm</span>
         </span>
-        <label className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           Border
-          <NativeSelect size="sm" value={look.border} onChange={(e) => setLook((l) => ({ ...l, border: e.target.value }))}>
-            {Object.entries(BORDERS).map(([key, b]) => <NativeSelectOption key={key} value={key}>{b.name}</NativeSelectOption>)}
-          </NativeSelect>
-        </label>
+          <Select value={look.border} onValueChange={(border) => setLook((l) => ({ ...l, border }))}>
+            <SelectTrigger size="sm" aria-label="Border"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(BORDERS).map(([key, b]) => <SelectItem key={key} value={key}>{b.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
         <Button size="sm" onClick={() => window.print()} disabled={labels.length === 0 || !validSize}>
           <Printer /> Print
         </Button>

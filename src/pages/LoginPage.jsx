@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Package } from 'lucide-react';
 import { api } from '@/api.js';
 import { useAuth } from '@/auth.jsx';
@@ -20,8 +20,7 @@ const STATUS = {
 };
 
 export default function LoginPage() {
-  const { user, loading, login } = useAuth();
-  const location = useLocation();
+  const { loading, login } = useAuth();
   const [params] = useSearchParams();
   const [config, setConfig] = useState(null);
   const [form, setForm] = useState({ username: '', password: '' });
@@ -34,7 +33,6 @@ export default function LoginPage() {
   }, []);
 
   if (loading || !config) return null;
-  if (user) return <Navigate to={location.state?.from || '/'} replace />;
 
   async function submit(e) {
     e.preventDefault();
@@ -68,7 +66,7 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-xl"><Package className="size-5" /> File Store Locator</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-xl"><Package className="size-5 text-primary" /> File Store Locator</CardTitle>
           <CardDescription>
             {config.google ? "Sign in with your Google account. New users need an admin's approval first." : 'Sign in to continue.'}
           </CardDescription>

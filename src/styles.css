@@ -3,52 +3,61 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn/ui theme tokens */
+/* shadcn/ui theme tokens: dark green (primary) and lime green (highlights).
+   Hex values are Tailwind's green and lime shades. The header is the deep green bar at the top of every page. */
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: #f7f9f3;
+  --foreground: #14281b;
+  --card: #ffffff;
+  --card-foreground: #14281b;
+  --popover: #ffffff;
+  --popover-foreground: #14281b;
+  --primary: #166534; /* green-800 */
+  --primary-foreground: #ffffff;
+  --secondary: #ecfccb; /* lime-100 */
+  --secondary-foreground: #14532d;
+  --muted: #f0f4ea;
+  --muted-foreground: #5b6b5f;
+  --accent: #ecfccb; /* lime-100 */
+  --accent-foreground: #14532d;
   --destructive: oklch(0.577 0.245 27.325);
-  --success: oklch(0.527 0.154 150.069);
+  --success: #15803d; /* green-700 */
   --warning: oklch(0.769 0.188 70.08);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: #dfe6d8;
+  --input: #d5ddcd;
+  --ring: #84cc16; /* lime-500 */
+  --lime: #a3e635; /* lime-400 */
+  --lime-foreground: #1a2e05; /* lime-950 */
+  --header: #14532d; /* green-900 */
+  --header-foreground: #f7fee7;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: #0b1a10;
+  --foreground: #ecf5e9;
+  --card: #112419;
+  --card-foreground: #ecf5e9;
+  --popover: #112419;
+  --popover-foreground: #ecf5e9;
+  --primary: #a3e635; /* lime-400 */
+  --primary-foreground: #1a2e05;
+  --secondary: #1d3a27;
+  --secondary-foreground: #ecfccb;
+  --muted: #17301f;
+  --muted-foreground: #9fb5a5;
+  --accent: #1d3a27;
+  --accent-foreground: #ecfccb;
   --destructive: oklch(0.704 0.191 22.216);
-  --success: oklch(0.723 0.219 149.579);
+  --success: #4ade80;
   --warning: oklch(0.828 0.189 84.429);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 15%);
+  --ring: #84cc16;
+  --lime: #a3e635;
+  --lime-foreground: #1a2e05;
+  --header: #0f2e1a;
+  --header-foreground: #f7fee7;
 }
 
 @theme inline {
@@ -76,6 +85,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-lime: var(--lime);
+  --color-lime-foreground: var(--lime-foreground);
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
 }
 
 @layer base {
@@ -119,6 +132,11 @@
     width: 100%; text-align: center; font-size: calc(2.6mm * var(--s));
     border-top: 0.3mm solid #000; padding-top: calc(1.5mm * var(--s));
   }
+}
+
+/* On a phone a wide label is wider than the screen: scroll the sheet sideways instead of the whole page. */
+@media screen {
+  .label-sheet { overflow-x: auto; }
 }
 
 @media print {

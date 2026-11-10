@@ -37,17 +37,20 @@ const buttonVariants = cva(
   }
 )
 
-function Button({
+// forwardRef: on React 18 a ref isn't passed to a function component otherwise, and Radix triggers
+// (dropdown menus, dialogs) need the button's element to position the menu and return focus.
+const Button = React.forwardRef(function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
   ...props
-}) {
+}, ref) {
   const Comp = asChild ? Slot.Root : "button"
 
   return (
     <Comp
+      ref={ref}
       data-slot="button"
       data-variant={variant}
       data-size={size}
@@ -55,6 +58,6 @@ function Button({
       {...props}
     />
   )
-}
+})
 
 export { Button, buttonVariants }

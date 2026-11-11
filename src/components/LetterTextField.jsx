@@ -16,7 +16,16 @@ export default function LetterTextField({ id, value, onChange }) {
   const [message, setMessage] = useState(null);
 
   // A photo, or a scanned PDF page, is read on the server; it's dropped there as soon as it's read.
-  const readImage = async (blob) => (await api.post('/letters/read-text', blob)).text;
+  const readImage = async (blob) => {
+    try {
+      return (await api.post('/letters/read-text', blob)).text;
+    } catch (err) {
+      // 413 comes from a size limit in front of the app (e.g. Nginx's client_max_body_size), not from the app itself.
+      if (err.status === 413)
+        throw new Error(`The photo (${(blob.size / 1024 / 1024).toFixed(1)} MB) was too large for the server to accept. Ask your administrator to raise the upload limit.`);
+      throw err;
+    }
+  };
 
   async function scan(e) {
     const files = [...e.target.files];
@@ -44,7 +53,12 @@ export default function LetterTextField({ id, value, onChange }) {
           if (!pdf.text) notes.push(`No text was found in "${file.name}".`);
         } else {
           setProgress(files.length > 1 ? `Reading photo ${n + 1} of ${files.length}…` : 'Reading the text…');
-          add(await readImage(await shrinkPhoto(file)));
+          const photoText = await readImage(await shrinkPhoto(file));
+          add(photoText);
+          if (!photoText) {
+            const name = files.length > 1 ? `photo ${n + 1}` : 'the photo';
+            notes.push(`No text was found in ${name}. Try again with the page flat, filling the frame, in good light.`);
+          }
         }
       }
       if (notes.length) setMessage({ ok: true, text: notes.join(' ') });

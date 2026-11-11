@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { useAuth } from '@/auth.jsx';
+import DatePicker from '@/components/DatePicker.jsx';
 import FilePicker from '@/components/FilePicker.jsx';
 import LetterTextField from '@/components/LetterTextField.jsx';
 import OfficeSelect from '@/components/OfficeSelect.jsx';
@@ -16,6 +17,7 @@ import {
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
+  useIsDesktop,
 } from '@/components/ResponsiveDialog.jsx';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -51,6 +53,8 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
   const [form, setForm] = useState(() => blank('', direction));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // On phones a focused field brings up the keyboard, so the first field is only focused on larger screens.
+  const isDesktop = useIsDesktop();
   const editing = Boolean(letter);
 
   useEffect(() => {
@@ -115,11 +119,11 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
                 {text.date}
                 {!inbound && <span className="font-normal text-muted-foreground"> (blank if not sent yet)</span>}
               </Label>
-              <Input id="letter-day" type="date" value={form[text.dateField]} onChange={set(text.dateField)} required={inbound} />
+              <DatePicker id="letter-day" value={form[text.dateField]} onChange={set(text.dateField)} required={inbound} placeholder={inbound ? 'Pick a date' : 'Not sent yet'} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-party">{text.party}</Label>
-              <Input id="letter-party" value={form[text.partyField]} onChange={set(text.partyField)} placeholder={text.partyPlaceholder} required autoFocus={!editing} />
+              <Input id="letter-party" value={form[text.partyField]} onChange={set(text.partyField)} placeholder={text.partyPlaceholder} required autoFocus={isDesktop && !editing} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-subject">Subject</Label>
@@ -131,7 +135,7 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
             </div>
             <div className="grid gap-2">
               <Label htmlFor="letter-date">Letter date <span className="font-normal text-muted-foreground">(optional)</span></Label>
-              <Input id="letter-date" type="date" value={form.letterDate} onChange={set('letterDate')} />
+              <DatePicker id="letter-date" value={form.letterDate} onChange={set('letterDate')} />
             </div>
             {!editing && (
               <>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { ROLE_NAMES } from '@/auth.jsx';
+import DatePicker from '@/components/DatePicker.jsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,11 +113,11 @@ export default function AuditTrail() {
           </Select>
           <label className="grid gap-1 text-xs text-muted-foreground">
             From
-            <Input type="date" value={filters.from} max={filters.to || undefined} onChange={set('from')} />
+            <DatePicker className="lg:w-44" value={filters.from} max={filters.to} onChange={(from) => setFilters((f) => ({ ...f, from }))} placeholder="Any date" aria-label="From date" />
           </label>
           <label className="grid gap-1 text-xs text-muted-foreground">
             To
-            <Input type="date" value={filters.to} min={filters.from || undefined} onChange={set('to')} />
+            <DatePicker className="lg:w-44" value={filters.to} min={filters.from} onChange={(to) => setFilters((f) => ({ ...f, to }))} placeholder="Any date" aria-label="To date" />
           </label>
           {filtered && (
             <Button variant="ghost" className="sm:col-span-2 lg:col-span-1" onClick={() => setFilters({ q: '', type: ALL, from: '', to: '' })}>

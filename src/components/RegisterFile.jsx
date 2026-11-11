@@ -16,6 +16,7 @@ import {
   ResponsiveDialogFooter,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
+  useIsDesktop,
   ResponsiveDialogTrigger,
 } from '@/components/ResponsiveDialog.jsx';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,8 @@ export default function RegisterFile({ onSaved }) {
   const [form, setForm] = useState(EMPTY);
   const [message, setMessage] = useState(null);
   const numberRef = useRef(null);
+  // On phones a focused field brings up the keyboard, so fields are only focused for you on larger screens.
+  const isDesktop = useIsDesktop();
 
   // Load the boxes each time the dialog opens, so newly added boxes show up. Only the chosen office's boxes are
   // offered (or every office's, grouped, when "All offices" is chosen).
@@ -66,7 +69,7 @@ export default function RegisterFile({ onSaved }) {
       const file = await api.post('/files', form);
       setMessage({ ok: true, text: `File ${file.fileNumber} saved in ${file.boxName} (${file.officeName}).` });
       setForm((f) => ({ ...f, fileNumber: '', name: '', letterCounter: '' }));
-      numberRef.current?.focus();
+      if (isDesktop) numberRef.current?.focus();
       onSaved?.(file);
     } catch (err) {
       setMessage({ ok: false, text: err.message });
@@ -103,7 +106,7 @@ export default function RegisterFile({ onSaved }) {
             <form id="register-file" onSubmit={submit} className="grid gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="reg-number">File number</Label>
-                <Input id="reg-number" ref={numberRef} value={form.fileNumber} onChange={set('fileNumber')} required autoFocus />
+                <Input id="reg-number" ref={numberRef} value={form.fileNumber} onChange={set('fileNumber')} required autoFocus={isDesktop} />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="reg-name">File name</Label>

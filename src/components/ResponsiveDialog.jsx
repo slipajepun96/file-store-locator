@@ -24,7 +24,8 @@ import { cn } from '@/lib/utils';
 // Same breakpoint as Tailwind's md: phones get a drawer, tablets and desktops a dialog.
 const DESKTOP_QUERY = '(min-width: 768px)';
 
-function useIsDesktop() {
+// Also for forms that behave differently on phones, e.g. not focusing a field (which opens the keyboard).
+export function useIsDesktop() {
   return useSyncExternalStore(
     (onChange) => {
       const mql = window.matchMedia(DESKTOP_QUERY);
@@ -60,27 +61,38 @@ export const ResponsiveDialogTrigger = pick(DialogTrigger, DrawerTrigger);
 export const ResponsiveDialogClose = pick(DialogClose, DrawerClose);
 export const ResponsiveDialogTitle = pick(DialogTitle, DrawerTitle);
 export const ResponsiveDialogDescription = pick(DialogDescription, DrawerDescription);
-export const ResponsiveDialogHeader = pick(DialogHeader, DrawerHeader);
 
 // className sets the dialog's width (e.g. sm:max-w-2xl); the drawer is always full width.
+// On phones the drawer can use almost the whole screen. It opens without focusing a field (vaul's default), since
+// that would bring up the keyboard and hide half the form; so don't give fields autoFocus there (see useIsDesktop).
 export function ResponsiveDialogContent({ className, children, ...props }) {
   return useContext(DesktopContext) ? (
     <DialogContent className={className} {...props}>{children}</DialogContent>
   ) : (
-    <DrawerContent {...props}>{children}</DrawerContent>
+    <DrawerContent className="data-[vaul-drawer-direction=bottom]:max-h-[calc(100dvh-0.75rem)]" {...props}>
+      {children}
+    </DrawerContent>
+  );
+}
+
+export function ResponsiveDialogHeader({ className, ...props }) {
+  return useContext(DesktopContext) ? (
+    <DialogHeader className={className} {...props} />
+  ) : (
+    <DrawerHeader className={cn('px-4 pt-2 pb-3', className)} {...props} />
   );
 }
 
 export function ResponsiveDialogBody({ className, ...props }) {
   const isDesktop = useContext(DesktopContext);
-  return <div className={cn(isDesktop ? 'grid gap-4' : 'grid min-h-0 gap-4 overflow-y-auto px-4 pb-2', className)} {...props} />;
+  return <div className={cn(isDesktop ? 'grid gap-4' : 'grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 pb-3', className)} {...props} />;
 }
 
-// On phones the buttons stack full width, with the main action (the last button) on top.
+// On phones the buttons share one row, splitting the width, with the main action (the last button) on the right.
 export function ResponsiveDialogFooter({ className, ...props }) {
   return useContext(DesktopContext) ? (
     <DialogFooter className={className} {...props} />
   ) : (
-    <DrawerFooter className={cn('flex-col-reverse border-t', className)} {...props} />
+    <DrawerFooter className={cn('flex-row border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] *:flex-1', className)} {...props} />
   );
 }

@@ -19,8 +19,12 @@ function loadPdfjs() {
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
     return pdfjs;
   });
+  // A failed load (e.g. the app was updated while this page was open) is tried again next time, not remembered.
+  pdfjsPromise.catch(() => (pdfjsPromise = null));
   return pdfjsPromise;
 }
+
+const READER_FAILED = "The PDF reader couldn't start. Reload the page and try again.";
 
 export const isPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
 
@@ -52,13 +56,23 @@ async function pageImage(page) {
 
 // Returns { text, pages, totalPages }. onPage(n, total) reports progress; readImage(blob) reads a scanned page.
 export async function readPdf(file, { onPage, readImage }) {
-  const pdfjs = await loadPdfjs();
+  let pdfjs;
+  try {
+    pdfjs = await loadPdfjs();
+  } catch (err) {
+    console.error('Loading PDF.js failed', err);
+    throw new Error(READER_FAILED);
+  }
   let pdf;
   try {
     pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   } catch (err) {
+    console.error(`Opening "${file.name}" failed`, err);
     if (err?.name === 'PasswordException') throw new Error(`"${file.name}" is password-protected. Open it, save a copy without a password, and try again.`);
-    throw new Error(`"${file.name}" couldn't be opened as a PDF.`);
+    if (err?.name === 'InvalidPDFException' || err?.name === 'MissingPDFException')
+      throw new Error(`"${file.name}" couldn't be opened as a PDF. It may be damaged or not really a PDF.`);
+    // Anything else is the reader itself failing (most often its worker not loading), not the file.
+    throw new Error(READER_FAILED);
   }
   try {
     const pages = Math.min(pdf.numPages, MAX_PDF_PAGES);

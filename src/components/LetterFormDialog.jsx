@@ -81,6 +81,22 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target?.value ?? e }));
 
+  // Details found in a scanned letter fill only the fields that are still empty, so nothing typed is replaced.
+  // Returns the names of the fields filled, for the scan's message.
+  function fillFromLetter(fields) {
+    const targets = [
+      ['referenceNo', fields.referenceNo, 'reference no.'],
+      ['letterDate', fields.letterDate, 'letter date'],
+      [text.partyField, fields[text.partyField], inbound ? 'sender' : 'recipient'],
+      ['subject', fields.subject, 'subject'],
+    ];
+    const isEmpty = (f, key) => !String(f[key] ?? '').trim();
+    const fill = targets.filter(([key, v]) => v && isEmpty(form, key));
+    // Checked again against the latest form, in case something was typed while the letter was being read.
+    setForm((f) => ({ ...f, ...Object.fromEntries(fill.filter(([key]) => isEmpty(f, key)).map(([key, v]) => [key, v])) }));
+    return fill.map(([, , label]) => label);
+  }
+
   async function submit(e) {
     e.preventDefault();
     if (!form.officeId) return setError(`Choose the office that ${inbound ? 'received' : 'sent'} the letter.`);
@@ -160,7 +176,7 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
               <FilePicker id="letter-files" value={form.files} onChange={set('files')} />
             </div>
             <div className="sm:col-span-2">
-              <LetterTextField id="letter-text" value={form.content} onChange={set('content')} />
+              <LetterTextField id="letter-text" value={form.content} onChange={set('content')} onFields={fillFromLetter} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-notes">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>

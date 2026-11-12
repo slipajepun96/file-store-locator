@@ -10,15 +10,18 @@ import { Textarea } from '@/components/ui/textarea';
 // The letter's text, for searching by what it says. "Scan photo / PDF" takes or picks photos of the pages (on a
 // phone it offers the camera) or PDFs, reads their text and adds it to the box below, where it can be corrected.
 // Scanning again adds the new pages after the text already there. Photos and PDFs themselves are never kept.
-export default function LetterTextField({ id, value, onChange }) {
+// When the server reads letters with Claude, it also finds the letter's details (reference, date, sender, recipient,
+// subject); they're passed to onFields(fields), which fills in the form and returns the names of what it filled.
+export default function LetterTextField({ id, value, onChange, onFields }) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null);
   const [message, setMessage] = useState(null);
 
   // A photo, or a scanned PDF page, is read on the server; it's dropped there as soon as it's read.
-  const readImage = async (blob) => {
+  // Returns { text, fields } (fields is null when the server read it without Claude).
+  const readPage = async (blob) => {
     try {
-      return (await api.post('/letters/read-text', blob)).text;
+      return await api.post('/letters/read-text', blob);
     } catch (err) {
       // 413 comes from a size limit in front of the app (e.g. Nginx's client_max_body_size), not from the app itself.
       if (err.status === 413)
@@ -34,6 +37,17 @@ export default function LetterTextField({ id, value, onChange }) {
     setMessage(null);
     let text = value.trim();
     const notes = [];
+    let failed = false;
+    // The details found on the pages of this scan; the first page that shows a detail wins.
+    const found = {};
+    const collect = (fields) => {
+      for (const [key, v] of Object.entries(fields ?? {})) if (v && !found[key]) found[key] = v;
+    };
+    const readImage = async (blob) => {
+      const page = await readPage(blob);
+      collect(page.fields);
+      return page.text;
+    };
     const add = (page) => {
       if (!page) return;
       text = text ? `${text}\n\n${page}` : page;
@@ -48,6 +62,12 @@ export default function LetterTextField({ id, value, onChange }) {
             onPage: (page, pages) => setProgress(`Reading "${file.name}"${which}, page ${page} of ${pages}…`),
           });
           add(pdf.text);
+          // A PDF made on a computer has its text already, so no page went through the photo reader: ask for the
+          // details from the text instead.
+          if (pdf.text && !Object.keys(found).length) {
+            setProgress(`Finding the letter's details in "${file.name}"…`);
+            collect((await api.post('/letters/read-fields', { text: pdf.text })).fields);
+          }
           if (pdf.totalPages > pdf.pages)
             notes.push(`Only the first ${MAX_PDF_PAGES} of ${pdf.totalPages} pages of "${file.name}" were read.`);
           if (!pdf.text) notes.push(`No text was found in "${file.name}".`);
@@ -61,12 +81,16 @@ export default function LetterTextField({ id, value, onChange }) {
           }
         }
       }
-      if (notes.length) setMessage({ ok: true, text: notes.join(' ') });
     } catch (err) {
-      setMessage({ ok: false, text: err.message });
+      notes.splice(0, notes.length, err.message);
+      failed = true;
     } finally {
       setProgress(null);
     }
+    // Details found before any failure are still used.
+    const filled = Object.keys(found).length ? onFields?.(found) ?? [] : [];
+    if (filled.length) notes.unshift(`Filled in from the letter: ${filled.join(', ')}. Check them before saving.`);
+    if (notes.length) setMessage({ ok: !failed, text: notes.join(' ') });
   }
 
   return (

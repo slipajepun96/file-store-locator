@@ -1,5 +1,6 @@
 import express from 'express';
 import { isDbError, pool, query, toFile } from './db.js';
+import { claudeEnabled, readLetterFields, readLetterImage } from './claude.js';
 import { isPhoto, readText } from './ocr.js';
 import { canManageOffice, requireAdmin } from './auth.js';
 import { clean, id, likeText, route } from './util.js';
@@ -16,8 +17,10 @@ import { audit, changes, describeChanges } from './audit.js';
 // number, inbound or outbound alike, and its code there is "<file number>/Bil. (<number>)". A letter in several
 // files has a number in each. Numbers aren't reused when a letter is removed or taken out of a file.
 //
-// Letter text: photos of a letter are read into text (server/ocr.js) so letters can be searched by what they say.
-// A photo is only held in memory while it's read, then dropped; only the text is saved, with the letter.
+// Letter text: photos of a letter are read into text so letters can be searched by what they say. With an Anthropic
+// API key, Claude reads them (server/claude.js) and also picks out the letter's details for the form; otherwise, or
+// if Claude can't be reached, Tesseract reads the text on this server (server/ocr.js). A photo is only held in
+// memory while it's read, then dropped; only the text is saved, with the letter.
 // Admins keep the lists of letter statuses and departments under Settings.
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -213,20 +216,46 @@ const letterSaveError = (err, res) => {
 
 export function registerLetterRoutes(app) {
   // ---- Letter text from a photo ----
-  // Send one photo as the request body (Content-Type image/jpeg, png or webp); get back { text }. The photo is read
-  // in memory and dropped afterwards: it's never saved. The text goes into the letter form to check and save.
+  // Send one photo as the request body (Content-Type image/jpeg, png or webp); get back { text, fields }. fields holds
+  // the details Claude found on the page ({ referenceNo, letterDate, sender, recipient, subject }, '' when not shown),
+  // or is null when the page was read by Tesseract. The photo is read in memory and dropped afterwards: it's never
+  // saved. The text and details go into the letter form to check and save.
   app.post('/api/letters/read-text', express.raw({ type: PHOTO_TYPES, limit: MAX_PHOTO }), route(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || !isPhoto(req.body))
       return res.status(400).json({ error: 'Send a photo (JPEG, PNG or WebP) of the letter.' });
-    let text;
-    try {
-      text = await readText(req.body);
-    } catch (err) {
-      console.error('Reading letter text failed:', err.message ?? err);
-      return res.status(422).json({ error: "Couldn't read this photo. Try a clearer, flatter photo in good light." });
+    let result = null;
+    if (claudeEnabled()) {
+      try {
+        result = await readLetterImage(req.body, req.get('content-type').split(';')[0].trim());
+      } catch (err) {
+        console.error('Reading a letter with Claude failed; reading it with Tesseract instead:', err.status ?? '', err.message ?? err);
+      }
     }
-    audit(res, { action: 'letter.read_text', targetId: null, summary: `Read text from a letter photo (${text.length} characters)` });
-    res.json({ text });
+    if (!result) {
+      try {
+        result = { text: await readText(req.body), fields: null };
+      } catch (err) {
+        console.error('Reading letter text failed:', err.message ?? err);
+        return res.status(422).json({ error: "Couldn't read this photo. Try a clearer, flatter photo in good light." });
+      }
+    }
+    const by = result.fields ? 'Claude' : 'Tesseract';
+    audit(res, { action: 'letter.read_text', targetId: null, summary: `Read text from a letter photo with ${by} (${result.text.length} characters)` });
+    res.json(result);
+  }));
+
+  // ---- Letter details from its text ----
+  // For a PDF that already holds its text: send { text }, get back { fields } as above, or { fields: null } when
+  // Claude isn't set up or couldn't read it (the form then just isn't filled in).
+  app.post('/api/letters/read-fields', route(async (req, res) => {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, MAX_CONTENT) : '';
+    if (!text || !claudeEnabled()) return res.json({ fields: null });
+    try {
+      res.json({ fields: await readLetterFields(text) });
+    } catch (err) {
+      console.error('Reading letter details with Claude failed:', err.status ?? '', err.message ?? err);
+      res.json({ fields: null });
+    }
   }));
 
   // ---- Letter statuses (admin) ----

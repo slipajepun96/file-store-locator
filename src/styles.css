@@ -97,6 +97,9 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    /* Long text without spaces (names, reference numbers, emails, links) breaks inside its box instead of spilling
+       out of it. "anywhere" also lets flex and grid items shrink below such a word. */
+    overflow-wrap: anywhere;
   }
 }
 
@@ -146,4 +149,11 @@
   /* On label paper the @page margin provides the space, since margins at page breaks get dropped. */
   .mode-label .label { break-after: page; margin: 0; }
   .mode-a4 .label { break-inside: avoid; }
+}
+
+/* Tailwind's break-words is overflow-wrap: break-word, which still sizes boxes to fit a long unbroken word, so a long
+   subject or name could push a card or list wider than a phone screen. "anywhere" breaks it and sizes to fit. This
+   is outside any layer so it wins over the utility. */
+.break-words {
+  overflow-wrap: anywhere;
 }

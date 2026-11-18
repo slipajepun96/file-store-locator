@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { ROLE_NAMES, useAuth } from '@/auth.jsx';
 import { useOffices } from '@/office.jsx';
+import { isIos, isStandalone, promptInstall, useCanInstall } from '@/pwa.js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,8 @@ export default function AccountPage() {
   const { officeName } = useOffices();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [message, setMessage] = useState(null);
+  const canInstall = useCanInstall();
+  const installed = isStandalone();
   const [departmentName, setDepartmentName] = useState('');
   useEffect(() => {
     if (user.departmentId)
@@ -41,6 +44,17 @@ export default function AccountPage() {
           {departmentName && ` · ${departmentName}`}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
+        {!installed && (canInstall || isIos()) && (
+          <div className="grid gap-2 rounded-lg border p-3 text-sm">
+            <p className="font-semibold">Install the app</p>
+            <p className="text-muted-foreground">
+              {canInstall
+                ? 'Add File Store Locator to your home screen or desktop. It opens in its own window, like any other app.'
+                : 'On iPhone or iPad: tap Share, then "Add to Home Screen". It opens in its own window, like any other app.'}
+            </p>
+            {canInstall && <Button className="justify-self-start" onClick={promptInstall}>Install app</Button>}
+          </div>
+        )}
         {!user.hasPassword && <p className="text-sm">You sign in with Google ({user.email}). There is no password to manage here.</p>}
         {user.hasPassword && (
           <>

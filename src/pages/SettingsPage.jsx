@@ -207,7 +207,7 @@ function UsersSection({ managedOfficeId }) {
   // Approve stays a button; the other choices are in the row menu.
   const requestActions = (u) => (
     <div className="flex items-center justify-end gap-1">
-      <Button size="sm" onClick={() => approve(u, 'worker')}>
+      <Button size="sm" className="h-auto min-h-8 py-1.5 whitespace-normal" onClick={() => approve(u, 'worker')}>
         <Check /> {isAdmin ? 'Approve' : `Approve into ${officeName(me.officeId)}`}
       </Button>
       <RowMenu label={`More for ${u.name}`}>

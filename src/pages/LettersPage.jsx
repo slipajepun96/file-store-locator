@@ -175,29 +175,29 @@ export default function LettersPage() {
               <TableBody>
                 {letters.map((l) => (
                   <TableRow key={l.id} className="cursor-pointer" onClick={(e) => !e.target.closest('button,a,[role=menu]') && navigate(`/letters/${l.id}`)}>
-                    <TableCell className="font-semibold">
+                    <TableCell className="max-w-44 font-semibold whitespace-normal break-words">
                       {l.letterNos[0] ?? <span className="font-normal text-muted-foreground">—</span>}
                       {l.letterNos.length > 1 && (
                         <span className="ml-1 text-xs font-normal text-muted-foreground" title={l.letterNos.join('\n')}>+{l.letterNos.length - 1}</span>
                       )}
                     </TableCell>
                     <TableCell className={l[text.dateField] ? undefined : 'text-muted-foreground'}>{date(l)}</TableCell>
-                    <TableCell className="max-w-48 truncate" title={party(l)}>{party(l)}</TableCell>
-                    <TableCell className="max-w-72" title={l.subject}>
-                      <Link to={`/letters/${l.id}`} className="block truncate font-medium hover:underline">{l.subject}</Link>
+                    <TableCell className="max-w-48 min-w-32 whitespace-normal break-words">{party(l)}</TableCell>
+                    <TableCell className="max-w-72 min-w-48 whitespace-normal break-words">
+                      <Link to={`/letters/${l.id}`} className="block font-medium break-words hover:underline">{l.subject}</Link>
                       {l.contentSnippet && (
                         <div className="whitespace-normal">
                           <Snippet text={l.contentSnippet} q={q.trim()} />
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>{l.referenceNo || '—'}</TableCell>
+                    <TableCell className="max-w-36 whitespace-normal break-words">{l.referenceNo || '—'}</TableCell>
                     <TableCell><Badge variant="outline">{l.statusName}</Badge></TableCell>
-                    <TableCell>
+                    <TableCell className="max-w-40 whitespace-normal break-words">
                       {l.departmentName ?? <span className="text-muted-foreground">Unassigned</span>}
                       {l.awaitingReceipt && <span className="block text-xs text-muted-foreground">Not received yet</span>}
                     </TableCell>
-                    {allOffices && <TableCell>{l.officeName}</TableCell>}
+                    {allOffices && <TableCell className="max-w-40 whitespace-normal break-words">{l.officeName}</TableCell>}
                     <TableCell className="text-right">{l.fileCount || '—'}</TableCell>
                     <TableCell className="w-10 text-right">{actions(l)}</TableCell>
                   </TableRow>

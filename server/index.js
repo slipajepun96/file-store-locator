@@ -655,9 +655,27 @@ registerAuditRoutes(app);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Serve the built React app (npm run build) so one server hosts everything.
+// Caching: built files in /assets/ have a content hash in their name, so browsers keep them for a year. The page,
+// the service worker and the manifest must always be checked, so a new version reaches people (see public/sw.js).
 if (fs.existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR));
-  app.get('*', (req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
+  const ALWAYS_CHECK = new Set(['index.html', 'sw.js', 'manifest.webmanifest']);
+  app.use(
+    express.static(DIST_DIR, {
+      index: false,
+      setHeaders(res, filePath) {
+        const name = path.basename(filePath);
+        if (ALWAYS_CHECK.has(name)) res.setHeader('Cache-Control', 'no-cache');
+        else if (filePath.includes(`${path.sep}assets${path.sep}`)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        if (name === 'manifest.webmanifest') res.setHeader('Content-Type', 'application/manifest+json');
+        // Lets the worker control the whole site even if it's ever served from a sub-path.
+        if (name === 'sw.js') res.setHeader('Service-Worker-Allowed', '/');
+      },
+    })
+  );
+  app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(DIST_DIR, 'index.html'));
+  });
 }
 
 app.use((err, req, res, next) => {

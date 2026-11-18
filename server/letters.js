@@ -11,7 +11,8 @@ import { rememberCorrespondent } from './correspondents.js';
 // An inbound letter has a sender and a date received; an outbound one has a recipient and a date sent (blank while
 // it's a draft). Each direction has its own statuses; departments are shared. A letter's direction is set when
 // it's recorded and doesn't change.
-// Anyone signed in can record a letter, file it into files, and update its status or department.
+// Anyone signed in can record a letter, file it into files, and update its status or department. Only admins choose
+// a letter's office: everyone else records letters in their own office and can't move a letter to another.
 // Removing a letter is for admins, the letter's office admin and the person who recorded it.
 //
 // Letter numbers: each file keeps a running number (files.letter_counter). A letter filed in a file takes the next
@@ -487,7 +488,10 @@ export function registerLetterRoutes(app) {
 
   app.post('/api/letters', route(async (req, res) => {
     const direction = readDirection(req.body.direction);
-    const { values: v, error } = await readLetter(req.body, direction, { requireStatus: true });
+    if (req.user.role !== 'admin' && !req.user.officeId)
+      return res.status(400).json({ error: "You're not in an office yet, so you can't record letters. Ask an admin to add you to yours." });
+    const body = req.user.role === 'admin' ? req.body : { ...req.body, officeId: req.user.officeId };
+    const { values: v, error } = await readLetter(body, direction, { requireStatus: true });
     if (error) return res.status(400).json({ error });
     const letterId = id();
     const now = new Date();
@@ -524,7 +528,8 @@ export function registerLetterRoutes(app) {
   app.put('/api/letters/:id', route(async (req, res) => {
     const letter = await findLetter(req.params.id);
     if (!letter) return res.status(404).json({ error: 'Letter not found.' });
-    const { values: v, error } = await readLetter(req.body, letter.direction, { requireStatus: false });
+    const body = req.user.role === 'admin' ? req.body : { ...req.body, officeId: letter.officeId };
+    const { values: v, error } = await readLetter(body, letter.direction, { requireStatus: false });
     if (error) return res.status(400).json({ error });
     try {
       await inTransaction(async (conn) => {

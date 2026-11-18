@@ -116,7 +116,7 @@ function DepartmentCard({ letter, departments, user, onChanged }) {
                   <Label htmlFor="received-date">Date received</Label>
                   <DatePicker id="received-date" required value={receivedDate} onChange={setReceivedDate} min={localDay(pending.sentAt)} max={today()} />
                 </div>
-                <Button type="submit" disabled={busy || !receivedDate}>Mark received by {pending.toDepartmentName}</Button>
+                <Button type="submit" className="h-auto min-h-9 py-2 whitespace-normal" disabled={busy || !receivedDate}>Mark received by {pending.toDepartmentName}</Button>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Waiting for {pending.toDepartmentName} to mark it received.</p>

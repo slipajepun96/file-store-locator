@@ -15,7 +15,11 @@ import BoxPage from '@/pages/BoxPage.jsx';
 import LabelPage from '@/pages/LabelPage.jsx';
 import NotFound from '@/pages/NotFound.jsx';
 import PublicSearchPage from '@/pages/PublicSearchPage.jsx';
+import AppStatus from '@/components/AppStatus.jsx';
+import { registerServiceWorker } from '@/pwa.js';
 import '@/styles.css';
+
+registerServiceWorker();
 
 const router = createBrowserRouter([
   // There's no separate sign-in page any more: old /login links go home, which asks signed-out visitors to sign in.
@@ -55,6 +59,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <AuthProvider>
       <OfficeProvider>
         <RouterProvider router={router} />
+        <AppStatus />
       </OfficeProvider>
     </AuthProvider>
   </React.StrictMode>

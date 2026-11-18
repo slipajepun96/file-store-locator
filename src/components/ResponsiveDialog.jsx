@@ -38,15 +38,25 @@ export function useIsDesktop() {
 
 const DesktopContext = createContext(true);
 
+// The drawer library moves and resizes the drawer itself when the keyboard opens (repositionInputs). It tells the
+// keyboard opening from closing by jumps of 60px or more in the visible height, but Android animates the keyboard in
+// many small steps, so it can lose track and leave the drawer short after the keyboard closes. On Android the page
+// resizes with the keyboard instead (interactive-widget=resizes-content in index.html), and the drawer, capped at the
+// screen height, follows it; so the library's own handling is turned off there. iOS keeps it, since it needs it.
+const IS_ANDROID = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
+
 // A dialog on desktop and a bottom drawer on phones, with one set of parts:
 // ResponsiveDialog > ResponsiveDialogContent > Header (Title, Description), Body, Footer.
 // Put the form fields in Body: in the drawer it scrolls between the fixed header and footer.
 export function ResponsiveDialog({ children, ...props }) {
   const isDesktop = useIsDesktop();
-  const Root = isDesktop ? Dialog : Drawer;
   return (
     <DesktopContext.Provider value={isDesktop}>
-      <Root {...props}>{children}</Root>
+      {isDesktop ? (
+        <Dialog {...props}>{children}</Dialog>
+      ) : (
+        <Drawer repositionInputs={!IS_ANDROID} {...props}>{children}</Drawer>
+      )}
     </DesktopContext.Provider>
   );
 }

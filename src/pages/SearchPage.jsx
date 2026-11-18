@@ -187,12 +187,12 @@ export default function SearchPage() {
                     {files.map((f) => (
                       <TableRow key={f.id} data-state={selected.includes(f.id) ? 'selected' : undefined}>
                         <TableCell>{selectBox(f)}</TableCell>
-                        <TableCell className="font-semibold">{f.fileNumber}</TableCell>
-                        <TableCell className="max-w-72 truncate" title={f.name}>{f.name}</TableCell>
-                        <TableCell><Link to={`/boxes/${f.boxId}`} className="underline underline-offset-4">{f.boxName}</Link></TableCell>
-                        <TableCell>{f.areaName}</TableCell>
-                        {allOffices && <TableCell>{f.officeName}</TableCell>}
-                        <TableCell>{f.createdByName}</TableCell>
+                        <TableCell className="max-w-40 font-semibold whitespace-normal break-words">{f.fileNumber}</TableCell>
+                        <TableCell className="max-w-72 min-w-48 whitespace-normal break-words">{f.name}</TableCell>
+                        <TableCell className="max-w-40 whitespace-normal break-words"><Link to={`/boxes/${f.boxId}`} className="underline underline-offset-4">{f.boxName}</Link></TableCell>
+                        <TableCell className="max-w-40 whitespace-normal break-words">{f.areaName}</TableCell>
+                        {allOffices && <TableCell className="max-w-40 whitespace-normal break-words">{f.officeName}</TableCell>}
+                        <TableCell className="max-w-40 whitespace-normal break-words">{f.createdByName}</TableCell>
                         <TableCell>{fmtDate(f.createdAt)}</TableCell>
                         <TableCell className="w-10 text-right">{actions(f)}</TableCell>
                       </TableRow>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { api, setUnauthorizedHandler } from '@/api.js';
 
@@ -7,10 +7,32 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True when the server couldn't be reached to check the sign-in (e.g. the installed app opened offline). That's not
+  // the same as being signed out, so the app says it's offline instead of showing the sign-in form.
+  const [unreachable, setUnreachable] = useState(false);
+  const unreachableRef = useRef(false);
+  unreachableRef.current = unreachable;
+
+  const check = () =>
+    api
+      .get('/auth/me')
+      .then((u) => {
+        setUser(u);
+        setUnreachable(false);
+      })
+      .catch((err) => {
+        setUnreachable(Boolean(err.offline));
+        if (!err.offline) setUser(null);
+      })
+      .finally(() => setLoading(false));
 
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null));
-    api.get('/auth/me').then(setUser).catch(() => setUser(null)).finally(() => setLoading(false));
+    check();
+    // Check again once the connection comes back.
+    const online = () => unreachableRef.current && check();
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
   }, []);
 
   // Re-reads the signed-in user, e.g. to update the admin's pending-approval count.
@@ -21,15 +43,25 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  return <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, loading, unreachable, retry: check, login, logout, refresh }}>{children}</AuthContext.Provider>
+  );
 }
 
 export const useAuth = () => useContext(AuthContext);
 
 // Signed-out visitors get the sign-in form (fallback) on the page they opened, and that page once they're in.
 export function RequireAuth({ fallback }) {
-  const { user, loading } = useAuth();
+  const { user, loading, unreachable, retry } = useAuth();
   if (loading) return <p className="mt-[40vh] text-center text-muted-foreground">Loading…</p>;
+  if (!user && unreachable)
+    return (
+      <div className="mx-auto mt-[30vh] grid max-w-sm gap-3 px-4 text-center">
+        <p className="font-semibold">{navigator.onLine ? "Can't reach the server" : "You're offline"}</p>
+        <p className="text-sm text-muted-foreground">File Store Locator needs a connection to show files and letters. It will carry on once you're back online.</p>
+        <button type="button" onClick={retry} className="justify-self-center text-sm font-medium underline underline-offset-4">Try again</button>
+      </div>
+    );
   if (!user) return fallback;
   return <Outlet />;
 }

@@ -58,6 +58,8 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
   // On phones a focused field brings up the keyboard, so the first field is only focused on larger screens.
   const isDesktop = useIsDesktop();
   const editing = Boolean(letter);
+  // Only admins choose the office; everyone else records letters in their own office (the server does the same).
+  const isAdmin = user.role === 'admin';
 
   useEffect(() => {
     if (!open) return;
@@ -77,7 +79,7 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
             content: letter.content ?? '',
             files: letter.files ?? [],
           }
-        : blank(officeId || user.officeId || '', direction)
+        : blank(isAdmin ? officeId || user.officeId || '' : user.officeId || '', direction)
     );
   }, [open, letter, direction]);
 
@@ -107,7 +109,12 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
 
   async function submit(e) {
     e.preventDefault();
-    if (!form.officeId) return setError(`Choose the office that ${inbound ? 'received' : 'sent'} the letter.`);
+    if (!form.officeId)
+      return setError(
+        isAdmin
+          ? `Choose the office that ${inbound ? 'received' : 'sent'} the letter.`
+          : "You're not in an office yet, so you can't record letters. Ask an admin to add you to yours."
+      );
     setSaving(true);
     const body = { ...form, direction, fileIds: form.files.map((f) => f.id) };
     try {
@@ -134,11 +141,13 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
 
         <ResponsiveDialogBody>
           <form id="letter-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="letter-office">{text.office}</Label>
-              <OfficeSelect id="letter-office" className="sm:w-full sm:max-w-none" value={form.officeId} onChange={set('officeId')} />
-            </div>
-            <div className="grid gap-2">
+            {isAdmin && (
+              <div className="grid gap-2">
+                <Label htmlFor="letter-office">{text.office}</Label>
+                <OfficeSelect id="letter-office" className="sm:w-full sm:max-w-none" value={form.officeId} onChange={set('officeId')} />
+              </div>
+            )}
+            <div className={isAdmin ? 'grid gap-2' : 'grid gap-2 sm:col-span-2'}>
               <Label htmlFor="letter-day">
                 {text.date}
                 {!inbound && <span className="font-normal text-muted-foreground"> (blank if not sent yet)</span>}

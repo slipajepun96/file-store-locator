@@ -23,7 +23,8 @@ export default function Layout() {
   const { offices, officeId, setOfficeId } = useOffices();
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 bg-header text-header-foreground shadow-sm">
+      {/* pt: the installed app can run under the phone's status bar (viewport-fit=cover). */}
+      <header className="sticky top-0 z-40 bg-header pt-[env(safe-area-inset-top)] text-header-foreground shadow-sm">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-4 sm:py-3">
           <Link to="/" className="flex items-center gap-2 font-semibold">
             <Package className="size-5 shrink-0 text-lime" />
@@ -37,7 +38,7 @@ export default function Layout() {
                 <Building2 className="size-4 shrink-0" aria-hidden="true" />
                 <OfficeSelect
                   size="sm"
-                  className="border-transparent bg-background text-foreground dark:bg-background"
+                  className="min-w-28 [overflow-wrap:normal] border-transparent bg-background text-foreground dark:bg-background"
                   value={officeId}
                   onChange={setOfficeId}
                   emptyLabel="All offices"
@@ -45,7 +46,8 @@ export default function Layout() {
               </div>
             )}
             <nav className="flex shrink-0 gap-1">
-              <NavLink to="/" end className={navClass}>Home</NavLink>
+              {/* On phones the app name goes home, leaving room for the office picker. */}
+              <NavLink to="/" end className={(s) => cn(navClass(s), 'hidden sm:inline-flex')}>Home</NavLink>
               <NavLink to="/files" className={navClass}>Files</NavLink>
               <NavLink to="/letters" className={navClass}>Letters</NavLink>
               {isManager(user) && (
@@ -60,9 +62,9 @@ export default function Layout() {
           </div>
 
           <div className="ml-auto flex min-w-0 items-center gap-1">
-            <NavLink to="/account" className={(s) => cn(navClass(s), 'min-w-0')} title="My account">
+            <NavLink to="/account" className={(s) => cn(navClass(s), 'h-auto min-h-9 min-w-0 py-1')} title="My account">
               <UserRound className="size-4 shrink-0 sm:hidden" />
-              <span className="max-w-32 truncate sm:max-w-48">{user.name}</span>
+              <span className="max-w-32 leading-tight break-words sm:max-w-48">{user.name}</span>
             </NavLink>
             <Button
               variant="ghost"

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { Archive, ArrowRight, Clock, FileText, FolderOpen, Inbox, Mail, MailOpen, Search, Send, Truck, UserCheck } from 'lucide-react';
+import { Archive, ArrowRight, Clock, Download, FileText, FolderOpen, Inbox, Mail, MailOpen, Search, Send, Truck, UserCheck } from 'lucide-react';
 import { api } from '@/api.js';
 import { ROLE_NAMES, isManager, useAuth } from '@/auth.jsx';
 import { useOffices } from '@/office.jsx';
 import { LETTER_TEXT, fmtDay } from '@/letters.jsx';
 import LetterFormDialog from '@/components/LetterFormDialog.jsx';
+import { promptInstall, useCanInstall } from '@/pwa.js';
 import RegisterFile from '@/components/RegisterFile.jsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ function Stat({ icon: Icon, label, value, to, tone }) {
       </span>
       <span className="min-w-0">
         <span className="block text-xl font-semibold tabular-nums sm:text-2xl">{value ?? '—'}</span>
-        <span className="block truncate text-xs text-muted-foreground">{label}</span>
+        <span className="block text-xs leading-tight break-words text-muted-foreground">{label}</span>
       </span>
     </Link>
   );
@@ -47,8 +48,8 @@ function LetterRow({ letter, meta, badge }) {
           {letter.direction === 'outbound' ? <Send className="size-4" /> : <Mail className="size-4" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{letter.subject}</span>
-          <span className="block truncate text-xs text-muted-foreground">{meta}</span>
+          <span className="block text-sm font-medium break-words">{letter.subject}</span>
+          <span className="block text-xs break-words text-muted-foreground">{meta}</span>
         </span>
         {badge}
       </Link>
@@ -99,6 +100,7 @@ export default function HomePage() {
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [recording, setRecording] = useState(null);
+  const canInstall = useCanInstall();
 
   const load = () =>
     api
@@ -151,6 +153,11 @@ export default function HomePage() {
           <Button variant="secondary" size="sm" onClick={() => setRecording('inbound')}><Inbox /> {LETTER_TEXT.inbound.record}</Button>
           <Button variant="secondary" size="sm" onClick={() => setRecording('outbound')}><Send /> {LETTER_TEXT.outbound.record}</Button>
           <RegisterFile variant="secondary" size="sm" onSaved={load} />
+          {canInstall && (
+            <Button size="sm" className="bg-lime text-lime-foreground hover:bg-lime/90 sm:ml-auto" onClick={promptInstall}>
+              <Download /> Install app
+            </Button>
+          )}
         </div>
       </section>
 

@@ -168,6 +168,13 @@ function UsersSection({ managedOfficeId }) {
 
   const update = (u, changes, ok) => run(() => api.put(`/users/${u.id}`, changes), ok);
 
+  // Admins can rename anyone, themselves included; office admins, the people they manage. The new name shows from
+  // now on; records already made keep the name they were made under.
+  function rename(u) {
+    const next = prompt(`New name for ${u.name}:`, u.name)?.trim().replace(/\s+/g, ' ');
+    if (next && next !== u.name) update(u, { name: next }, `${u.name} is now ${next}.`);
+  }
+
   function resetPassword(u) {
     const password = prompt(`New password for ${u.name} (min. 8 characters):`);
     if (password) run(() => api.put(`/users/${u.id}/password`, { password }), `Password reset for ${u.name}.`);
@@ -211,6 +218,8 @@ function UsersSection({ managedOfficeId }) {
             <DropdownMenuSeparator />
           </>
         )}
+        <DropdownMenuItem onSelect={() => rename(u)}><Pencil /> Rename</DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={() => update(u, { status: 'rejected' }, `${u.name} rejected.`)}><Ban /> Reject</DropdownMenuItem>
       </RowMenu>
     </div>
@@ -269,16 +278,19 @@ function UsersSection({ managedOfficeId }) {
   const accountActions = (u) => {
     const self = u.id === me.id;
     const canReset = isAdmin && u.hasPassword;
-    if (self && !canReset) return null;
+    // Office admins can't edit their own account.
+    const canRename = isAdmin || !self;
+    if (self && !canReset && !canRename) return null;
     return (
       <RowMenu label={`Actions for ${u.name}`}>
         {u.status === 'rejected' && (
           <DropdownMenuItem onSelect={() => update(u, { status: 'active' }, `${u.name} approved.`)}><Check /> Approve</DropdownMenuItem>
         )}
+        {canRename && <DropdownMenuItem onSelect={() => rename(u)}><Pencil /> Rename</DropdownMenuItem>}
         {canReset && <DropdownMenuItem onSelect={() => resetPassword(u)}><KeyRound /> Reset password</DropdownMenuItem>}
         {!self && (
           <>
-            {(u.status === 'rejected' || canReset) && <DropdownMenuSeparator />}
+            <DropdownMenuSeparator />
             {u.status === 'active' && (
               <DropdownMenuItem variant="destructive" onSelect={() => update(u, { status: 'rejected' }, `${u.name} can no longer sign in.`)}><Ban /> Block</DropdownMenuItem>
             )}

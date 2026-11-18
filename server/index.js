@@ -261,7 +261,9 @@ app.put('/api/users/:id', requireManager, route(async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found.' });
   const before = { ...user };
   const { role, status } = req.body;
-  const name = clean(req.body.name);
+  const name = clean(req.body.name).replace(/\s+/g, ' ');
+  if (req.body.name !== undefined && !name) return res.status(400).json({ error: 'Enter a name.' });
+  if (name.length > 200) return res.status(400).json({ error: 'Keep the name under 200 characters.' });
   if (role !== undefined && !ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role.' });
   if (status !== undefined && !STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
   if (user.id === req.user.id && ((role && role !== user.role) || (status && status !== 'active')))

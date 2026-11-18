@@ -63,18 +63,19 @@ const NONE = '__none__';
 
 // A department picker. value/onChange use '' for "no department". With allLabel, it's a filter instead:
 // '' means all departments and 'none' means letters with no department.
-export function DepartmentSelect({ departments, value, onChange, allLabel, size, className, id, label = 'Department' }) {
-  const toSelect = (v) => (allLabel ? (v === '' ? ALL : v === 'none' ? NONE : v) : v || NONE);
+// With allowNone={false}, "No department" isn't offered and '' shows placeholder instead.
+export function DepartmentSelect({ departments, value, onChange, allLabel, size, className, id, label = 'Department', allowNone = true, placeholder = 'Choose department' }) {
+  const toSelect = (v) => (allLabel ? (v === '' ? ALL : v === 'none' ? NONE : v) : v || (allowNone ? NONE : ''));
   const fromSelect = (v) => (allLabel ? (v === ALL ? '' : v === NONE ? 'none' : v) : v === NONE ? '' : v);
   return (
     <Select value={toSelect(value)} onValueChange={(v) => onChange(fromSelect(v))}>
       <SelectTrigger id={id} size={size} className={cn('w-full sm:w-fit sm:min-w-40', className)} aria-label={label}>
-        <SelectValue />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {allLabel && <SelectItem value={ALL}>{allLabel}</SelectItem>}
-        <SelectItem value={NONE}>{allLabel ? 'Unassigned' : 'No department'}</SelectItem>
-        {departments.length > 0 && <SelectSeparator />}
+        {(allLabel || allowNone) && <SelectItem value={NONE}>{allLabel ? 'Unassigned' : 'No department'}</SelectItem>}
+        {(allLabel || allowNone) && departments.length > 0 && <SelectSeparator />}
         {departments.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
       </SelectContent>
     </Select>

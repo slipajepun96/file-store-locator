@@ -23,6 +23,7 @@ const TARGETS = {
   letters: 'letter',
   'letter-statuses': 'status',
   departments: 'department',
+  correspondents: 'correspondent',
   settings: 'settings',
 };
 export const AUDIT_TARGETS = [...new Set(Object.values(TARGETS))];

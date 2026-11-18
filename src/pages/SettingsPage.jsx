@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useParams } from 'react-router-dom';
-import { Archive, ArrowDown, ArrowUp, Ban, Building2, Check, History, KeyRound, ListChecks, Network, Pencil, Printer, Trash2, Users } from 'lucide-react';
+import { Archive, ArrowDown, ArrowUp, Ban, Building2, Check, Contact, History, KeyRound, ListChecks, Network, Pencil, Printer, Trash2, Users } from 'lucide-react';
 import { api } from '@/api.js';
 import { ROLE_NAMES, useAuth } from '@/auth.jsx';
 import { cn } from '@/lib/utils';
-import { DIRECTIONS, LETTER_TEXT } from '@/letters.jsx';
+import { DIRECTIONS, DepartmentSelect, LETTER_TEXT } from '@/letters.jsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useOffices } from '@/office.jsx';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +23,9 @@ const dangerGhost = 'text-destructive hover:text-destructive';
 
 // A card listing named things with an Add form, and Rename / Move / Remove in each row's menu.
 // `extra` is sent along with each new name, e.g. the office an area belongs to. With canMove, items can be
-// moved up and down (endpoint/:id/move), for lists whose order matters.
-function NameList({ title, description, endpoint, placeholder, items, onChange, extra, canRename, canMove }) {
+// moved up and down (endpoint/:id/move), for lists whose order matters. With searchable, the Add box also filters
+// the list, for long lists. meta(item) adds a small note after each name. renameNote is added to the rename prompt.
+function NameList({ title, description, endpoint, placeholder, items, onChange, extra, canRename, canMove, searchable, meta, renameNote }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
@@ -50,11 +51,13 @@ function NameList({ title, description, endpoint, placeholder, items, onChange, 
   }
 
   function rename(item) {
-    const next = prompt(`New name for "${item.name}":`, item.name)?.trim();
+    const next = prompt(`New name for "${item.name}":${renameNote ? `\n${renameNote}` : ''}`, item.name)?.trim();
     if (next && next !== item.name) run(() => api.put(`${endpoint}/${item.id}`, { name: next }));
   }
 
   const move = (item, direction) => run(() => api.post(`${endpoint}/${item.id}/move`, { direction }));
+  const filter = searchable ? name.trim().toLowerCase() : '';
+  const shown = filter ? items.filter((i) => i.name.toLowerCase().includes(filter)) : items;
 
   return (
     <Card>
@@ -69,11 +72,12 @@ function NameList({ title, description, endpoint, placeholder, items, onChange, 
         </form>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <ul className="divide-y">
-          {items.map((i, n) => (
+          {shown.map((i, n) => (
             <li key={i.id} className="flex items-center justify-between gap-2 py-1 text-sm">
               <span className="min-w-0 break-words">
                 {canMove && <span className="mr-2 text-muted-foreground tabular-nums">{n + 1}.</span>}
                 {i.name}
+                {meta && <span className="ml-2 text-xs text-muted-foreground">{meta(i)}</span>}
               </span>
               <RowMenu label={`Actions for ${i.name}`}>
                 {canRename && <DropdownMenuItem onSelect={() => rename(i)}><Pencil /> Rename</DropdownMenuItem>}
@@ -88,7 +92,9 @@ function NameList({ title, description, endpoint, placeholder, items, onChange, 
               </RowMenu>
             </li>
           ))}
-          {items.length === 0 && <li className="py-2 text-sm text-muted-foreground">None yet.</li>}
+          {shown.length === 0 && (
+            <li className="py-2 text-sm text-muted-foreground">{filter ? `Nothing matches "${name.trim()}". Add it above.` : 'None yet.'}</li>
+          )}
         </ul>
       </CardContent>
     </Card>
@@ -116,12 +122,14 @@ function RoleSelect({ value, onChange, disabled, label = 'Role', size, className
   );
 }
 
-// Admins manage every account. Office admins see sign-up requests and their own office's workers.
+// Admins manage every account. Office admins see sign-up requests and their own office's workers. Both set each
+// person's department, the one they send and receive letters for.
 function UsersSection({ managedOfficeId }) {
   const { user: me, refresh } = useAuth();
   const { officeName } = useOffices();
   const isAdmin = me.role === 'admin';
   const [users, setUsers] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [form, setForm] = useState(EMPTY_INVITE);
   // The office chosen for each waiting request, by user id (admins pick; office admins approve into their own).
   const [requestOffice, setRequestOffice] = useState({});
@@ -129,7 +137,11 @@ function UsersSection({ managedOfficeId }) {
   const [notice, setNotice] = useState('');
 
   const load = () => api.get('/users').then(setUsers);
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    api.get('/departments').then(setDepartments);
+  }, []);
+  const departmentName = (departmentId) => departments.find((d) => d.id === departmentId)?.name;
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -235,6 +247,20 @@ function UsersSection({ managedOfficeId }) {
     ) : (
       u.officeId ? officeName(u.officeId) : '—'
     );
+  // Office admins can't edit themselves here, so their own department shows as text.
+  const departmentControl = (u, className) =>
+    isAdmin || u.id !== me.id ? (
+      <DepartmentSelect
+        size="sm"
+        className={className}
+        departments={departments}
+        value={u.departmentId ?? ''}
+        label={`Department for ${u.name}`}
+        onChange={(id) => update(u, { departmentId: id }, `${u.name} is now in ${id ? departmentName(id) : 'no department'}.`)}
+      />
+    ) : (
+      departmentName(u.departmentId) ?? '—'
+    );
   const statusBadge = (u) => (
     <Badge className={STATUS_BADGE[u.status]}>
       {u.status === 'active' ? (u.google || u.hasPassword ? 'active' : 'invited') : u.status}
@@ -323,6 +349,7 @@ function UsersSection({ managedOfficeId }) {
           <form onSubmit={invite} className="grid gap-2 sm:flex sm:flex-wrap">
             <Input className="sm:min-w-36 sm:flex-1" value={form.name} onChange={set('name')} placeholder="Worker name" aria-label="Name" required />
             <Input className="sm:min-w-36 sm:flex-1" type="email" value={form.email} onChange={set('email')} placeholder="name@gmail.com" aria-label="Google email" autoCapitalize="none" required />
+            <DepartmentSelect departments={departments} value={form.departmentId ?? ''} onChange={(departmentId) => setForm((f) => ({ ...f, departmentId }))} />
             {isAdmin && (
               <div className="grid grid-cols-2 gap-2 sm:flex">
                 <RoleSelect className="w-full sm:w-fit" value={form.role} onChange={(role) => setForm((f) => ({ ...f, role }))} />
@@ -356,6 +383,10 @@ function UsersSection({ managedOfficeId }) {
                   <span className="text-xs text-muted-foreground">Office</span>
                   {officeControl(u, 'w-full sm:w-full')}
                 </div>
+                <div className="col-span-2 grid min-w-0 gap-1">
+                  <span className="text-xs text-muted-foreground">Department</span>
+                  {departmentControl(u, 'w-full sm:w-full')}
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">Last sign-in {fmtDate(u.lastLoginAt)}</p>
             </li>
@@ -370,6 +401,7 @@ function UsersSection({ managedOfficeId }) {
                 <TableHead>Name &amp; sign-in</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Office</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last sign-in</TableHead>
                 <TableHead />
@@ -384,6 +416,7 @@ function UsersSection({ managedOfficeId }) {
                   </TableCell>
                   <TableCell>{roleControl(u)}</TableCell>
                   <TableCell>{officeControl(u)}</TableCell>
+                  <TableCell>{departmentControl(u)}</TableCell>
                   <TableCell>{statusBadge(u)}</TableCell>
                   <TableCell>{fmtDate(u.lastLoginAt)}</TableCell>
                   <TableCell className="w-10 text-right">{accountActions(u)}</TableCell>
@@ -576,6 +609,7 @@ const SECTIONS = [
   { key: 'boxes', label: 'Areas & File Boxes', icon: Archive },
   { key: 'statuses', label: 'Letter Statuses', icon: ListChecks, adminOnly: true },
   { key: 'departments', label: 'Departments', icon: Network, adminOnly: true },
+  { key: 'correspondents', label: 'Senders & Recipients', icon: Contact, adminOnly: true },
   { key: 'audit', label: 'Audit Trail', icon: History },
 ];
 
@@ -596,6 +630,11 @@ export default function SettingsPage() {
   const [departments, setDepartments] = useState([]);
   const loadStatuses = () => api.get(`/letter-statuses?direction=${statusDirection}`).then(setStatuses);
   const loadDepartments = () => api.get('/departments').then(setDepartments);
+  const [correspondents, setCorrespondents] = useState([]);
+  const loadCorrespondents = () => api.get('/correspondents').then(setCorrespondents);
+  useEffect(() => {
+    if (section === 'correspondents') loadCorrespondents();
+  }, [section]);
 
   useEffect(() => {
     if (section === 'statuses') loadStatuses();
@@ -643,6 +682,20 @@ export default function SettingsPage() {
           )}
           {section === 'boxes' && <BoxesSection managedOfficeId={managedOfficeId} />}
           {section === 'audit' && <AuditTrail />}
+          {section === 'correspondents' && (
+            <NameList
+              title="Senders & Recipients"
+              description={`The organisations letters come from and go to, offered in a letter's From and To fields (${correspondents.length} names). Anyone can add a new name from a letter. Renaming a name renames it on its letters too; removing one leaves its letters as they are.`}
+              endpoint="/correspondents"
+              placeholder="Type to search, or a new name to add"
+              items={correspondents}
+              onChange={loadCorrespondents}
+              meta={(c) => (c.letterCount ? `${c.letterCount} letter${c.letterCount > 1 ? 's' : ''}` : '')}
+              renameNote="Letters that use this name will be renamed too."
+              searchable
+              canRename
+            />
+          )}
           {section === 'statuses' && (
             <Tabs
               value={statusDirection}

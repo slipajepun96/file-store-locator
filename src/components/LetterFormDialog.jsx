@@ -3,7 +3,8 @@ import { api } from '@/api.js';
 import { useAuth } from '@/auth.jsx';
 import DatePicker from '@/components/DatePicker.jsx';
 import FilePicker from '@/components/FilePicker.jsx';
-import LetterTextField from '@/components/LetterTextField.jsx';
+import LetterTextField, { LetterScan } from '@/components/LetterTextField.jsx';
+import CorrespondentField, { useCorrespondents } from '@/components/CorrespondentField.jsx';
 import OfficeSelect from '@/components/OfficeSelect.jsx';
 import { DepartmentSelect, LETTER_TEXT, StatusSelect, today, useLetterLists } from '@/letters.jsx';
 import { useOffices } from '@/office.jsx';
@@ -50,6 +51,7 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
   const text = LETTER_TEXT[direction];
   const inbound = direction === 'inbound';
   const { statuses, departments } = useLetterLists(direction);
+  const correspondents = useCorrespondents(open);
   const [form, setForm] = useState(() => blank('', direction));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -81,13 +83,19 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target?.value ?? e }));
 
+  const listName = (name) => {
+    const key = name?.trim().replace(/\s+/g, ' ').toLowerCase();
+    return (key && correspondents.list.find((c) => c.name.toLowerCase() === key)?.name) || name;
+  };
+
   // Details found in a scanned letter fill only the fields that are still empty, so nothing typed is replaced.
   // Returns the names of the fields filled, for the scan's message.
   function fillFromLetter(fields) {
     const targets = [
       ['referenceNo', fields.referenceNo, 'reference no.'],
       ['letterDate', fields.letterDate, 'letter date'],
-      [text.partyField, fields[text.partyField], inbound ? 'sender' : 'recipient'],
+      // A name read from the letter that's already on the list (in any capitalisation) uses the list's spelling.
+      [text.partyField, listName(fields[text.partyField]), inbound ? 'sender' : 'recipient'],
       ['subject', fields.subject, 'subject'],
     ];
     const isEmpty = (f, key) => !String(f[key] ?? '').trim();
@@ -139,7 +147,19 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-party">{text.party}</Label>
-              <Input id="letter-party" value={form[text.partyField]} onChange={set(text.partyField)} placeholder={text.partyPlaceholder} required autoFocus={isDesktop && !editing} />
+              <CorrespondentField
+                id="letter-party"
+                value={form[text.partyField]}
+                onChange={set(text.partyField)}
+                names={correspondents.list}
+                onAdded={correspondents.reload}
+                placeholder={`${text.partyPlaceholder}: type to search`}
+                required
+                autoFocus={isDesktop && !editing}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <LetterScan value={form.content} onChange={set('content')} onFields={fillFromLetter} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-subject">Subject</Label>
@@ -176,7 +196,7 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
               <FilePicker id="letter-files" value={form.files} onChange={set('files')} />
             </div>
             <div className="sm:col-span-2">
-              <LetterTextField id="letter-text" value={form.content} onChange={set('content')} onFields={fillFromLetter} />
+              <LetterTextField id="letter-text" value={form.content} onChange={set('content')} />
             </div>
             <div className="grid gap-2 sm:col-span-2">
               <Label htmlFor="letter-notes">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>

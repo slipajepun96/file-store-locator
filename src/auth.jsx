@@ -39,6 +39,11 @@ export const isManager = (u) => u?.role === 'admin' || (u?.role === 'office_admi
 export const canManageOffice = (u, officeId) =>
   u?.role === 'admin' || (u?.role === 'office_admin' && Boolean(officeId) && u.officeId === officeId);
 
+// A worker sends and receives letters only for their own department; admins, and office admins for their own
+// office's letters, for any. The server checks the same (canActForDepartment in server/auth.js).
+export const canActForDepartment = (u, officeId, departmentId) =>
+  canManageOffice(u, officeId) || (Boolean(departmentId) && u?.departmentId === departmentId);
+
 export const ROLE_NAMES = { admin: 'Admin', office_admin: 'Office admin', worker: 'Worker' };
 
 // The Settings page: admins and office admins.

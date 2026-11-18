@@ -27,6 +27,7 @@ import {
 import { audit, auditTrail, changes, describeChanges, registerAuditRoutes } from './audit.js';
 import { finishGoogleLogin, googleConfigured, startGoogleLogin } from './google.js';
 import { registerLetterRoutes } from './letters.js';
+import { registerCorrespondentRoutes } from './correspondents.js';
 import { clean, id, likeText, route } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -172,12 +173,14 @@ const officeAdminMayEdit = (me, target) =>
 
 const ROLE_LABELS = { admin: 'admin', office_admin: 'office admin', worker: 'worker' };
 const officeName = async (officeId) => (officeId ? (await findOffice(officeId))?.name ?? 'a removed office' : 'no office');
+const departmentName = async (departmentId) =>
+  departmentId ? (await query('SELECT name FROM departments WHERE id = ?', [departmentId]))[0]?.name ?? 'a removed department' : 'no department';
 
 // What an account edit did, in words: "Approved Ali", "Blocked Ali", or "Updated Ali: role: worker → admin".
 async function describeUserChange(before, after) {
   const diff = changes(
-    { name: before.name, role: ROLE_LABELS[before.role], office: await officeName(before.officeId) },
-    { name: after.name, role: ROLE_LABELS[after.role], office: await officeName(after.officeId) }
+    { name: before.name, role: ROLE_LABELS[before.role], office: await officeName(before.officeId), department: await departmentName(before.departmentId) },
+    { name: after.name, role: ROLE_LABELS[after.role], office: await officeName(after.officeId), department: await departmentName(after.departmentId) }
   );
   const base = { targetId: after.id, officeId: after.officeId ?? before.officeId, details: diff };
   if (before.status !== after.status) {
@@ -195,6 +198,14 @@ async function readOfficeId(value) {
   if (!officeId) return { officeId: null };
   if (!(await findOffice(officeId))) return { error: 'Choose a valid office.' };
   return { officeId };
+}
+
+// Checks a department id: '' or null means none.
+async function readDepartmentId(value) {
+  const departmentId = clean(value);
+  if (!departmentId) return { departmentId: null };
+  if (!(await query('SELECT 1 FROM departments WHERE id = ?', [departmentId])).length) return { error: 'Choose a valid department.' };
+  return { departmentId };
 }
 
 app.get('/api/users', requireManager, route(async (req, res) => {
@@ -220,26 +231,31 @@ app.post('/api/users', requireManager, route(async (req, res) => {
     if (office.error) return res.status(400).json({ error: office.error });
     officeId = office.officeId;
   }
+  const department = await readDepartmentId(req.body.departmentId);
+  if (department.error) return res.status(400).json({ error: department.error });
+  const departmentId = department.departmentId;
   if (!name) return res.status(400).json({ error: 'Name is required.' });
   if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid Google email address.' });
   if (role === 'office_admin' && !officeId) return res.status(400).json({ error: 'Choose the office this office admin runs.' });
   if ((await query('SELECT 1 FROM users WHERE email = ?', [email])).length)
     return res.status(409).json({ error: 'An account with this email already exists.' });
   const now = new Date();
-  const user = { id: id(), name, email, role, officeId, status: 'active', createdAt: now, approvedAt: now, approvedBy: req.user.id };
+  const user = { id: id(), name, email, role, officeId, departmentId, status: 'active', createdAt: now, approvedAt: now, approvedBy: req.user.id };
   await query(
-    'INSERT INTO users (id, name, email, role, office_id, status, created_at, approved_at, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [user.id, name, email, role, officeId, user.status, now, now, req.user.id]
+    'INSERT INTO users (id, name, email, role, office_id, department_id, status, created_at, approved_at, approved_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [user.id, name, email, role, officeId, departmentId, user.status, now, now, req.user.id]
   );
   audit(res, {
     targetId: user.id,
     officeId,
-    summary: `Pre-approved ${name} <${email}> as ${ROLE_LABELS[role]}${officeId ? ` of ${await officeName(officeId)}` : ''}`,
+    summary: `Pre-approved ${name} <${email}> as ${ROLE_LABELS[role]}${officeId ? ` of ${await officeName(officeId)}` : ''}${
+      departmentId ? `, in ${await departmentName(departmentId)}` : ''}`,
   });
   res.status(201).json(publicUser(user));
 }));
 
-// Approve, reject, rename, or change the role or office of an account.
+// Approve, reject, rename, or change the role, office or department of an account. Office admins can set the
+// department of the people they manage.
 app.put('/api/users/:id', requireManager, route(async (req, res) => {
   const user = await findUser(req.params.id);
   if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -264,6 +280,11 @@ app.put('/api/users/:id', requireManager, route(async (req, res) => {
     if (office.error) return res.status(400).json({ error: office.error });
     user.officeId = office.officeId;
   }
+  if (req.body.departmentId !== undefined) {
+    const department = await readDepartmentId(req.body.departmentId);
+    if (department.error) return res.status(400).json({ error: department.error });
+    user.departmentId = department.departmentId;
+  }
   if (role) user.role = role;
   if (name) user.name = name;
   if (user.role === 'office_admin' && !user.officeId)
@@ -277,11 +298,12 @@ app.put('/api/users/:id', requireManager, route(async (req, res) => {
       await endUserSessions(user.id);
     }
   }
-  await query('UPDATE users SET role = ?, name = ?, status = ?, office_id = ?, approved_at = ?, approved_by = ? WHERE id = ?', [
+  await query('UPDATE users SET role = ?, name = ?, status = ?, office_id = ?, department_id = ?, approved_at = ?, approved_by = ? WHERE id = ?', [
     user.role,
     user.name,
     user.status,
     user.officeId,
+    user.departmentId,
     user.approvedAt,
     user.approvedBy,
     user.id,
@@ -625,6 +647,7 @@ app.delete('/api/files/:id', route(async (req, res) => {
 }));
 
 registerLetterRoutes(app);
+registerCorrespondentRoutes(app);
 registerAuditRoutes(app);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));

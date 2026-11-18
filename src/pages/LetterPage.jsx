@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { api } from '@/api.js';
-import { canManageOffice, useAuth } from '@/auth.jsx';
+import { canActForDepartment, canManageOffice, useAuth } from '@/auth.jsx';
+import DatePicker from '@/components/DatePicker.jsx';
 import LetterFormDialog from '@/components/LetterFormDialog.jsx';
-import { DepartmentSelect, LETTER_TEXT, StatusSelect, fmtDay, useLetterLists } from '@/letters.jsx';
+import { DepartmentSelect, LETTER_TEXT, StatusSelect, fmtDay, today, useLetterLists } from '@/letters.jsx';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,8 +30,174 @@ function LetterText({ text }) {
 }
 
 const fmtTime = (iso) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+// A timestamp's day as YYYY-MM-DD in the person's own time zone.
+const localDay = (iso) => new Date(iso).toLocaleDateString('en-CA');
 
-// One letter: its details, the files it's in, a form to update its status or department, and its history.
+// Which department has the letter, sending it on to another, and marking a sent letter received (with the date it
+// came in, picked by hand). The date sent is stamped by the server when it's sent. People act only for their own
+// department; the forms show only for those who may use them.
+function DepartmentCard({ letter, departments, user, onChanged }) {
+  const pending = letter.transfers.find((t) => !t.receivedDate);
+  const [send, setSend] = useState({ toDepartmentId: '', note: '' });
+  const [receivedDate, setReceivedDate] = useState(today());
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (fn, okText) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await fn();
+      await onChanged();
+      setMsg({ ok: true, text: okText });
+    } catch (err) {
+      setMsg({ ok: false, text: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendLetter = (e) => {
+    e.preventDefault();
+    const to = departments.find((d) => d.id === send.toDepartmentId);
+    run(async () => {
+      await api.post(`/letters/${letter.id}/transfers`, send);
+      setSend({ toDepartmentId: '', note: '' });
+      setReceivedDate(today());
+    }, `Sent to ${to?.name ?? 'the department'}.`);
+  };
+
+  const receive = (e) => {
+    e.preventDefault();
+    run(() => api.post(`/letters/${letter.id}/transfers/${pending.id}/receive`, { receivedDate }), `Marked received by ${pending.toDepartmentName}.`);
+  };
+
+  const cancel = () => {
+    if (!confirm(`Cancel sending this letter to ${pending.toDepartmentName}? It goes back to ${pending.fromDepartmentName ?? 'unassigned'}.`)) return;
+    run(() => api.del(`/letters/${letter.id}/transfers/${pending.id}`), 'Send cancelled.');
+  };
+
+  const canCancel = pending && (pending.sentBy === user.id || canActForDepartment(user, letter.officeId, pending.fromDepartmentId));
+  const canReceive = pending && canActForDepartment(user, letter.officeId, pending.toDepartmentId);
+  // A letter with no department yet can be sent by anyone.
+  const canSend = !letter.departmentId || canActForDepartment(user, letter.officeId, letter.departmentId);
+  const others = departments.filter((d) => d.id !== letter.departmentId);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Department</CardTitle>
+        <CardDescription>
+          {pending ? (
+            <>Sent to <span className="font-medium text-foreground">{pending.toDepartmentName}</span>, not received yet.</>
+          ) : letter.departmentName ? (
+            <>With <span className="font-medium text-foreground">{letter.departmentName}</span>.</>
+          ) : (
+            'Not with any department yet.'
+          )}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {pending ? (
+          <form onSubmit={receive} className="grid gap-3">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <div className="min-w-0">
+                <dt className="text-xs text-muted-foreground">From</dt>
+                <dd className="break-words">{pending.fromDepartmentName ?? 'Unassigned'}</dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs text-muted-foreground">Date sent</dt>
+                <dd>{fmtTime(pending.sentAt)}</dd>
+              </div>
+            </dl>
+            {canReceive ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="received-date">Date received</Label>
+                  <DatePicker id="received-date" required value={receivedDate} onChange={setReceivedDate} min={localDay(pending.sentAt)} max={today()} />
+                </div>
+                <Button type="submit" disabled={busy || !receivedDate}>Mark received by {pending.toDepartmentName}</Button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Waiting for {pending.toDepartmentName} to mark it received.</p>
+            )}
+            {canCancel && (
+              <Button type="button" variant="ghost" disabled={busy} onClick={cancel}><Undo2 /> Cancel send</Button>
+            )}
+          </form>
+        ) : !canSend ? (
+          <p className="text-sm text-muted-foreground">
+            Only {letter.departmentName} can send this letter on
+            {user.departmentId ? '.' : '. You are not in a department yet; ask an admin to add you to yours.'}
+          </p>
+        ) : (
+          <form onSubmit={sendLetter} className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="send-department">Send to</Label>
+              <DepartmentSelect
+                id="send-department"
+                className="sm:w-full"
+                label="Send to"
+                allowNone={false}
+                departments={others}
+                value={send.toDepartmentId}
+                onChange={(toDepartmentId) => setSend((s) => ({ ...s, toDepartmentId }))}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="send-note">Note <span className="font-normal text-muted-foreground">(optional)</span></Label>
+              <Textarea id="send-note" rows={2} value={send.note} onChange={(e) => setSend((s) => ({ ...s, note: e.target.value }))} placeholder="e.g. For your action" />
+            </div>
+            <Button type="submit" disabled={busy || !send.toDepartmentId}><Send /> Send letter</Button>
+            <p className="text-xs text-muted-foreground">The date sent is recorded when you send it.</p>
+          </form>
+        )}
+        {msg && <p className={msg.ok ? 'text-sm text-success' : 'text-sm text-destructive'}>{msg.text}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Every time the letter was sent between departments, newest first, with the dates sent and received.
+function Movements({ transfers }) {
+  if (transfers.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Movement ({transfers.length})</CardTitle>
+        <CardDescription>Each time this letter was sent to another department.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="divide-y rounded-lg border">
+          {transfers.map((t) => (
+            <li key={t.id} className="grid gap-1 px-3 py-2 text-sm">
+              <p className="font-medium break-words">
+                {t.fromDepartmentName ?? 'Unassigned'} → {t.toDepartmentName}
+                {!t.receivedDate && <Badge variant="outline" className="ml-2">Not received</Badge>}
+              </p>
+              <dl className="grid grid-cols-2 gap-x-4 text-xs">
+                <div>
+                  <dt className="text-muted-foreground">Sent</dt>
+                  <dd>{fmtTime(t.sentAt)}</dd>
+                  <dd className="text-muted-foreground break-words">by {t.sentByName}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Received</dt>
+                  <dd>{t.receivedDate ? fmtDay(t.receivedDate) : '—'}</dd>
+                  {t.receivedByName && <dd className="text-muted-foreground break-words">by {t.receivedByName}</dd>}
+                </div>
+              </dl>
+              {t.note && <p className="whitespace-pre-wrap text-muted-foreground">{t.note}</p>}
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// One letter: its details, the files it's in, its department (send it on, mark it received), a form to update its
+// status, and its history.
 export default function LetterPage() {
   const { user } = useAuth();
   const { letterId } = useParams();
@@ -41,7 +208,7 @@ export default function LetterPage() {
   const { statuses, departments } = useLetterLists(letter?.direction);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(false);
-  const [update, setUpdate] = useState({ statusId: '', departmentId: '', note: '' });
+  const [update, setUpdate] = useState({ statusId: '', note: '' });
   const [updateMsg, setUpdateMsg] = useState(null);
 
   const load = () =>
@@ -49,7 +216,7 @@ export default function LetterPage() {
       .get(`/letters/${letterId}`)
       .then((l) => {
         setLetter(l);
-        setUpdate({ statusId: l.statusId, departmentId: l.departmentId ?? '', note: '' });
+        setUpdate({ statusId: l.statusId, note: '' });
       })
       .catch((e) => setError(e.message));
 
@@ -92,8 +259,7 @@ export default function LetterPage() {
   if (!letter) return <Card><CardContent className="text-muted-foreground">Loading…</CardContent></Card>;
 
   const text = LETTER_TEXT[letter.direction];
-  const changed =
-    update.statusId !== letter.statusId || (update.departmentId || null) !== letter.departmentId || update.note.trim() !== '';
+  const changed = update.statusId !== letter.statusId || update.note.trim() !== '';
   const detail = (label, value) => (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -115,6 +281,7 @@ export default function LetterPage() {
                 <Badge>{text.tab}</Badge>
                 <Badge variant="outline">{letter.statusName}</Badge>
                 <Badge variant="secondary">{letter.departmentName ?? 'Unassigned'}</Badge>
+                {letter.awaitingReceipt && <Badge variant="outline">Not received</Badge>}
               </div>
               <CardTitle className="text-xl break-words sm:text-2xl">{letter.subject}</CardTitle>
               {letter.letterNos.length > 0 && (
@@ -174,6 +341,8 @@ export default function LetterPage() {
             </CardContent>
           </Card>
 
+          <Movements transfers={letter.transfers} />
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Letter text</CardTitle>
@@ -190,10 +359,12 @@ export default function LetterPage() {
         </div>
 
         <div className="grid gap-4 sm:gap-6">
+          <DepartmentCard letter={letter} departments={departments} user={user} onChanged={load} />
+
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Update status</CardTitle>
-              <CardDescription>Change the status or the department handling it. Each update is kept in the history.</CardDescription>
+              <CardDescription>Change the status or add a note. Each update is kept in the history.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={saveUpdate} className="grid gap-3">
@@ -202,12 +373,8 @@ export default function LetterPage() {
                   <StatusSelect id="update-status" className="sm:w-full" statuses={statuses} value={update.statusId} onChange={(statusId) => setUpdate((u) => ({ ...u, statusId }))} />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="update-department">Department</Label>
-                  <DepartmentSelect id="update-department" className="sm:w-full" departments={departments} value={update.departmentId} onChange={(departmentId) => setUpdate((u) => ({ ...u, departmentId }))} />
-                </div>
-                <div className="grid gap-2">
                   <Label htmlFor="update-note">Note <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Textarea id="update-note" rows={2} value={update.note} onChange={(e) => setUpdate((u) => ({ ...u, note: e.target.value }))} placeholder="e.g. Forwarded to Legal for reply" />
+                  <Textarea id="update-note" rows={2} value={update.note} onChange={(e) => setUpdate((u) => ({ ...u, note: e.target.value }))} placeholder="e.g. Reply drafted" />
                 </div>
                 <Button type="submit" disabled={!changed}>Save update</Button>
                 {updateMsg && <p className={updateMsg.ok ? 'text-sm text-success' : 'text-sm text-destructive'}>{updateMsg.text}</p>}

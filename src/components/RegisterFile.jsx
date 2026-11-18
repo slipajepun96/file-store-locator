@@ -26,7 +26,8 @@ const EMPTY = { fileNumber: '', name: '', boxId: '', letterCounter: '' };
 
 // A "Register File" button that opens the register form in a dialog (a drawer on phones). Calls onSaved(file) after each save.
 // The dialog stays open after saving, with the box still selected, so a stack of files can be keyed in quickly.
-export default function RegisterFile({ onSaved }) {
+// variant and size style the button.
+export default function RegisterFile({ onSaved, variant, size }) {
   const { user } = useAuth();
   const { officeId, officeName } = useOffices();
   const [open, setOpen] = useState(false);
@@ -81,7 +82,7 @@ export default function RegisterFile({ onSaved }) {
   return (
     <ResponsiveDialog open={open} onOpenChange={changeOpen}>
       <ResponsiveDialogTrigger asChild>
-        <Button><Plus /> Register File</Button>
+        <Button variant={variant} size={size}><Plus /> Register File</Button>
       </ResponsiveDialogTrigger>
       <ResponsiveDialogContent>
         <ResponsiveDialogHeader>

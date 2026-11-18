@@ -74,6 +74,7 @@ export const publicUser = (u) => ({
   role: u.role,
   status: u.status,
   officeId: u.officeId ?? null,
+  departmentId: u.departmentId ?? null,
   google: Boolean(u.googleId),
   hasPassword: Boolean(u.passwordHash),
   createdAt: u.createdAt,
@@ -120,6 +121,12 @@ export function requireManager(req, res, next) {
   if (!isManager(req.user)) return res.status(403).json({ error: 'Admins and office admins only.' });
   next();
 }
+
+// ---- Departments ----
+// A worker sends and receives letters only for their own department. Admins, and office admins for letters of
+// their office, can act for any department.
+export const canActForDepartment = (u, officeId, departmentId) =>
+  canManageOffice(u, officeId) || (Boolean(departmentId) && u?.departmentId === departmentId);
 
 // ---- Login throttling: 10 failed attempts per IP+username per 15 minutes ----
 const WINDOW_MS = 15 * 60 * 1000;

@@ -2,9 +2,10 @@ import express from 'express';
 import { isDbError, pool, query, toFile } from './db.js';
 import { claudeEnabled, readLetterFields, readLetterImage } from './claude.js';
 import { isPhoto, readText } from './ocr.js';
-import { canManageOffice, requireAdmin } from './auth.js';
+import { canActForDepartment, canManageOffice, requireAdmin } from './auth.js';
 import { clean, id, likeText, route } from './util.js';
 import { audit, changes, describeChanges } from './audit.js';
+import { rememberCorrespondent } from './correspondents.js';
 
 // ---- Letters, inbound and outbound ----
 // An inbound letter has a sender and a date received; an outbound one has a recipient and a date sent (blank while
@@ -21,7 +22,19 @@ import { audit, changes, describeChanges } from './audit.js';
 // API key, Claude reads them (server/claude.js) and also picks out the letter's details for the form; otherwise, or
 // if Claude can't be reached, Tesseract reads the text on this server (server/ocr.js). A photo is only held in
 // memory while it's read, then dropped; only the text is saved, with the letter.
-// Admins keep the lists of letter statuses and departments under Settings.
+// Admins keep the lists of letter statuses and departments under Settings, and the list of senders and recipients
+// offered in From / To (server/correspondents.js); a letter saved with a name not on that list adds it.
+//
+// Sending between departments: a letter is with one department at a time (letters.department_id). Sending it to
+// another department records a transfer (letter_transfers) stamped with the date and time it was sent, and the
+// letter goes to the new department straight away, marked "not received yet". When it arrives, the receiving
+// department marks it received and picks the date it came in. A letter can't be sent on again until it's been
+// received; a send made by mistake can be cancelled until then, which puts it back with the department it left.
+// A letter's department changes only this way (and when it's first recorded), so each move is kept.
+// People act for their own department (users.department_id): only the department that has a letter can send it on,
+// only the department it was sent to can mark it received, and only the one it came from (or the person who sent
+// it) can cancel the send. Admins, and office admins for their office's letters, can act for any department. A
+// letter with no department yet can be sent by anyone.
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // About 200 pages of text.
@@ -55,6 +68,8 @@ const toLetter = (r) =>
     statusPosition: r.status_position ?? 0,
     departmentId: r.department_id ?? null,
     departmentName: r.department_name ?? null,
+    // Sent to its department but not marked received there yet.
+    awaitingReceipt: Boolean(Number(r.awaiting_receipt ?? 0)),
     notes: r.notes ?? '',
     content: r.content ?? '',
     fileCount: Number(r.file_count ?? 0),
@@ -75,6 +90,24 @@ const toUpdate = (r) => ({
   createdAt: r.created_at,
 });
 
+const toTransfer = (r) => ({
+  id: r.id,
+  fromDepartmentId: r.from_department_id ?? null,
+  fromDepartmentName: r.from_department_name ?? null,
+  toDepartmentId: r.to_department_id ?? null,
+  toDepartmentName: r.to_department_name,
+  note: r.note ?? '',
+  sentAt: r.sent_at,
+  sentByName: r.sent_by_name,
+  sentBy: r.sent_by,
+  receivedDate: day(r.received_date),
+  receivedByName: r.received_by_name ?? null,
+  receivedAt: r.received_at ?? null,
+});
+
+// A day as YYYY-MM-DD, `days` days from date (UTC).
+const addDays = (date, days) => new Date(date.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+
 // The SQL for a letter's code in a file, e.g. "F-100/Bil. (24)".
 const LETTER_NO_SQL = "CONCAT(files.file_number, '/Bil. (', letter_files.bil_no, ')')";
 const LETTER_NO_SEPARATOR = '\u001f';
@@ -85,7 +118,9 @@ const LETTERS = `
          (SELECT COUNT(*) FROM letter_files WHERE letter_files.letter_id = letters.id) AS file_count,
          (SELECT GROUP_CONCAT(${LETTER_NO_SQL} ORDER BY files.file_number SEPARATOR '${LETTER_NO_SEPARATOR}')
             FROM letter_files JOIN files ON files.id = letter_files.file_id
-            WHERE letter_files.letter_id = letters.id) AS letter_nos
+            WHERE letter_files.letter_id = letters.id) AS letter_nos,
+         EXISTS (SELECT 1 FROM letter_transfers
+                   WHERE letter_transfers.letter_id = letters.id AND letter_transfers.received_date IS NULL) AS awaiting_receipt
   FROM letters
   JOIN offices ON offices.id = letters.office_id
   JOIN letter_statuses ON letter_statuses.id = letters.status_id
@@ -251,7 +286,10 @@ export function registerLetterRoutes(app) {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim().slice(0, MAX_CONTENT) : '';
     if (!text || !claudeEnabled()) return res.json({ fields: null });
     try {
-      res.json({ fields: await readLetterFields(text) });
+      const fields = await readLetterFields(text);
+      const found = Object.values(fields).filter(Boolean).length;
+      audit(res, { action: 'letter.read_fields', targetId: null, summary: `Read a letter's details from its text with Claude (${found} of 5 found)` });
+      res.json({ fields });
     } catch (err) {
       console.error('Reading letter details with Claude failed:', err.status ?? '', err.message ?? err);
       res.json({ fields: null });
@@ -434,14 +472,16 @@ export function registerLetterRoutes(app) {
   app.get('/api/letters/:id', route(async (req, res) => {
     const letter = await findLetter(req.params.id);
     if (!letter) return res.status(404).json({ error: 'Letter not found.' });
-    const [files, updates] = await Promise.all([
+    const [files, updates, transfers] = await Promise.all([
       query(`${FILES_WITH_LOCATION} WHERE letter_files.letter_id = ? ORDER BY files.file_number`, [letter.id]),
       query('SELECT * FROM letter_updates WHERE letter_id = ? ORDER BY created_at DESC', [letter.id]),
+      query('SELECT * FROM letter_transfers WHERE letter_id = ? ORDER BY sent_at DESC', [letter.id]),
     ]);
     res.json({
       ...letter,
       files: files.map((r) => ({ ...toFile(r), bilNo: r.bil_no, letterNo: r.letter_no })),
       updates: updates.map(toUpdate),
+      transfers: transfers.map(toTransfer),
     });
   }));
 
@@ -461,6 +501,7 @@ export function registerLetterRoutes(app) {
             v.status.id, v.department?.id ?? null, v.notes, v.content, req.user.id, req.user.name, now]
         );
         await setLetterFiles(conn, letterId, v.fileIds);
+        await rememberCorrespondent(conn, v.sender ?? v.recipient, req.user);
         await conn.query(
           'INSERT INTO letter_updates (id, letter_id, status_name, department_name, note, created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [id(), letterId, v.status.name, v.department?.name ?? null, 'Letter recorded.', req.user.id, req.user.name, now]
@@ -494,6 +535,7 @@ export function registerLetterRoutes(app) {
             v.content, req.user.id, req.user.name, new Date(), letter.id]
         );
         await setLetterFiles(conn, letter.id, v.fileIds);
+        await rememberCorrespondent(conn, v.sender ?? v.recipient, req.user);
       });
     } catch (err) {
       return letterSaveError(err, res);
@@ -524,34 +566,30 @@ export function registerLetterRoutes(app) {
     res.json(saved);
   }));
 
-  // Update a letter's status and/or department, with an optional note. Each update is added to its history.
+  // Update a letter's status, with an optional note. Each update is added to its history. Its department
+  // changes by sending it to another department (below), so departmentId isn't read here.
   app.post('/api/letters/:id/updates', route(async (req, res) => {
     const letter = await findLetter(req.params.id);
     if (!letter) return res.status(404).json({ error: 'Letter not found.' });
     const status = await readStatus(req.body.statusId || letter.statusId, letter.direction);
     if (status.error) return res.status(400).json({ error: status.error });
-    const department = await readDepartment(req.body.departmentId === undefined ? letter.departmentId : req.body.departmentId);
-    if (department.error) return res.status(400).json({ error: department.error });
     const note = clean(req.body.note) || null;
-    const statusChanged = status.status.id !== letter.statusId;
-    const departmentChanged = (department.department?.id ?? null) !== letter.departmentId;
-    if (!statusChanged && !departmentChanged && !note)
-      return res.status(400).json({ error: 'Change the status or department, or add a note.' });
+    if (status.status.id === letter.statusId && !note) return res.status(400).json({ error: 'Change the status or add a note.' });
     const now = new Date();
     await inTransaction(async (conn) => {
-      await conn.query(
-        'UPDATE letters SET status_id = ?, department_id = ?, updated_by = ?, updated_by_name = ?, updated_at = ? WHERE id = ?',
-        [status.status.id, department.department?.id ?? null, req.user.id, req.user.name, now, letter.id]
-      );
+      await conn.query('UPDATE letters SET status_id = ?, updated_by = ?, updated_by_name = ?, updated_at = ? WHERE id = ?', [
+        status.status.id,
+        req.user.id,
+        req.user.name,
+        now,
+        letter.id,
+      ]);
       await conn.query(
         'INSERT INTO letter_updates (id, letter_id, status_name, department_name, note, created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [id(), letter.id, status.status.name, department.department?.name ?? null, note, req.user.id, req.user.name, now]
+        [id(), letter.id, status.status.name, letter.departmentName, note, req.user.id, req.user.name, now]
       );
     });
-    const diff = changes(
-      { status: letter.statusName, department: letter.departmentName },
-      { status: status.status.name, department: department.department?.name ?? null }
-    );
+    const diff = changes({ status: letter.statusName }, { status: status.status.name });
     audit(res, {
       action: 'letter.status',
       targetId: letter.id,
@@ -560,6 +598,235 @@ export function registerLetterRoutes(app) {
       summary: `Updated ${letterLabel(letter)}: ${[describeChanges(diff), note && `note: ${note}`].filter(Boolean).join(', ')}`,
     });
     res.status(201).json(await findLetter(letter.id));
+  }));
+
+  // ---- Sending a letter to another department ----
+  // Send { toDepartmentId, note? }. The date and time sent are stamped now, and the letter goes to that department,
+  // waiting to be marked received.
+  app.post('/api/letters/:id/transfers', route(async (req, res) => {
+    const letter = await findLetter(req.params.id);
+    if (!letter) return res.status(404).json({ error: 'Letter not found.' });
+    if (!clean(req.body.toDepartmentId)) return res.status(400).json({ error: 'Choose the department to send the letter to.' });
+    const { department: to, error } = await readDepartment(req.body.toDepartmentId);
+    if (error) return res.status(400).json({ error });
+    if (to.id === letter.departmentId) return res.status(400).json({ error: `The letter is already with ${to.name}.` });
+    if (letter.departmentId && !canActForDepartment(req.user, letter.officeId, letter.departmentId))
+      return res.status(403).json({ error: `Only ${letter.departmentName} can send this letter on.` });
+    const note = clean(req.body.note) || null;
+    const now = new Date();
+    const transferId = id();
+    const sent = await inTransaction(async (conn) => {
+      // Locks the letter so two sends at once can't both go through.
+      const [[row]] = await conn.query('SELECT department_id FROM letters WHERE id = ? FOR UPDATE', [letter.id]);
+      const [[pending]] = await conn.query(
+        'SELECT to_department_name FROM letter_transfers WHERE letter_id = ? AND received_date IS NULL LIMIT 1',
+        [letter.id]
+      );
+      if (pending) return { error: `The letter hasn't been received by ${pending.to_department_name} yet. Mark it received there first.` };
+      if ((row?.department_id ?? null) !== letter.departmentId) return { error: 'This letter has just been moved. Reload and try again.' };
+      await conn.query(
+        `INSERT INTO letter_transfers (id, letter_id, from_department_id, from_department_name, to_department_id, to_department_name,
+           note, sent_at, sent_by, sent_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [transferId, letter.id, letter.departmentId, letter.departmentName, to.id, to.name, note, now, req.user.id, req.user.name]
+      );
+      await conn.query('UPDATE letters SET department_id = ?, updated_by = ?, updated_by_name = ?, updated_at = ? WHERE id = ?', [
+        to.id,
+        req.user.id,
+        req.user.name,
+        now,
+        letter.id,
+      ]);
+      await conn.query(
+        'INSERT INTO letter_updates (id, letter_id, status_name, department_name, note, created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id(), letter.id, letter.statusName, to.name, [`Sent to ${to.name}${letter.departmentName ? ` from ${letter.departmentName}` : ''}.`, note].filter(Boolean).join('\n'),
+          req.user.id, req.user.name, now]
+      );
+      return {};
+    });
+    if (sent.error) return res.status(409).json({ error: sent.error });
+    audit(res, {
+      action: 'letter.send',
+      targetId: letter.id,
+      officeId: letter.officeId,
+      details: { department: [letter.departmentName, to.name], ...(note && { note }) },
+      summary: `Sent ${letterLabel(letter)} from ${letter.departmentName ?? 'unassigned'} to ${to.name}${note ? `, note: ${note}` : ''}`,
+    });
+    res.status(201).json(await findLetter(letter.id));
+  }));
+
+  // Mark a sent letter received by its department: send { receivedDate: 'YYYY-MM-DD' }, the day it came in. It can't
+  // be before the day it was sent or after today (a day's leeway either way for time zones).
+  app.post('/api/letters/:id/transfers/:transferId/receive', route(async (req, res) => {
+    const letter = await findLetter(req.params.id);
+    if (!letter) return res.status(404).json({ error: 'Letter not found.' });
+    const receivedDate = clean(req.body.receivedDate);
+    if (!DATE_RE.test(receivedDate)) return res.status(400).json({ error: 'Choose the date the letter was received.' });
+    const [transfer] = await query('SELECT * FROM letter_transfers WHERE id = ? AND letter_id = ?', [req.params.transferId, letter.id]);
+    if (!transfer) return res.status(404).json({ error: 'This send was not found. Reload and try again.' });
+    if (transfer.received_date) return res.status(409).json({ error: 'This letter has already been marked received.' });
+    if (!canActForDepartment(req.user, letter.officeId, transfer.to_department_id))
+      return res.status(403).json({ error: `Only ${transfer.to_department_name} can mark this letter received.` });
+    if (receivedDate < addDays(transfer.sent_at, -1))
+      return res.status(400).json({ error: "The date received can't be before the date the letter was sent." });
+    if (receivedDate > addDays(new Date(), 1)) return res.status(400).json({ error: "The date received can't be in the future." });
+    const now = new Date();
+    const result = await query(
+      `UPDATE letter_transfers SET received_date = ?, received_by = ?, received_by_name = ?, received_at = ?
+       WHERE id = ? AND received_date IS NULL`,
+      [receivedDate, req.user.id, req.user.name, now, transfer.id]
+    );
+    if (result.affectedRows === 0) return res.status(409).json({ error: 'This letter has already been marked received.' });
+    await query(
+      'INSERT INTO letter_updates (id, letter_id, status_name, department_name, note, created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id(), letter.id, letter.statusName, transfer.to_department_name, `Received by ${transfer.to_department_name} on ${receivedDate}.`,
+        req.user.id, req.user.name, now]
+    );
+    audit(res, {
+      action: 'letter.receive',
+      targetId: letter.id,
+      officeId: letter.officeId,
+      details: { 'received date': [null, receivedDate] },
+      summary: `${transfer.to_department_name} received ${letterLabel(letter)} (date received ${receivedDate})`,
+    });
+    res.json(await findLetter(letter.id));
+  }));
+
+  // Cancel a send that hasn't been received yet: the letter goes back to the department it was sent from. For the
+  // person who sent it, that department, admins and the letter's office admin.
+  app.delete('/api/letters/:id/transfers/:transferId', route(async (req, res) => {
+    const letter = await findLetter(req.params.id);
+    if (!letter) return res.status(404).json({ error: 'Letter not found.' });
+    const [transfer] = await query('SELECT * FROM letter_transfers WHERE id = ? AND letter_id = ?', [req.params.transferId, letter.id]);
+    if (!transfer) return res.status(404).json({ error: 'This send was not found. Reload and try again.' });
+    if (transfer.received_date) return res.status(409).json({ error: "This letter has been received, so the send can't be cancelled." });
+    if (transfer.sent_by !== req.user.id && !canActForDepartment(req.user, letter.officeId, transfer.from_department_id))
+      return res.status(403).json({ error: `Only ${transfer.from_department_name ?? 'the person who sent it'} can cancel this send.` });
+    const now = new Date();
+    const cancelled = await inTransaction(async (conn) => {
+      const [gone] = await conn.query('DELETE FROM letter_transfers WHERE id = ? AND received_date IS NULL', [transfer.id]);
+      if (gone.affectedRows === 0) return false;
+      // The department it came from may have been removed since; it's then unassigned.
+      const [[from]] = transfer.from_department_id
+        ? await conn.query('SELECT id FROM departments WHERE id = ?', [transfer.from_department_id])
+        : [[]];
+      await conn.query('UPDATE letters SET department_id = ?, updated_by = ?, updated_by_name = ?, updated_at = ? WHERE id = ?', [
+        from?.id ?? null,
+        req.user.id,
+        req.user.name,
+        now,
+        letter.id,
+      ]);
+      await conn.query(
+        'INSERT INTO letter_updates (id, letter_id, status_name, department_name, note, created_by, created_by_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [id(), letter.id, letter.statusName, from ? transfer.from_department_name : null,
+          `Cancelled sending to ${transfer.to_department_name}${from ? `; back with ${transfer.from_department_name}` : ''}.`,
+          req.user.id, req.user.name, now]
+      );
+      return true;
+    });
+    if (!cancelled) return res.status(409).json({ error: 'This letter has just been marked received. Reload to see it.' });
+    audit(res, {
+      action: 'letter.send_cancel',
+      targetId: letter.id,
+      officeId: letter.officeId,
+      summary: `Cancelled sending ${letterLabel(letter)} to ${transfer.to_department_name}`,
+    });
+    res.status(204).end();
+  }));
+
+  // ---- Home page ----
+  // Everything the home page shows, in one call. ?officeId= narrows the counts and recent letters to one office.
+  // The department lists follow the person's department wherever its letters are (departments are shared by every
+  // office). Admins and office admins also get every letter still on its way between departments (inTransit),
+  // since they can mark any of them received.
+  //   { department, counts: { files, boxes, inbound, outbound, unfiled }, toReceive, sentAwaiting, withDepartment,
+  //     withDepartmentCount, inTransit, recent }
+  // Letters come without their text; the transfer lists carry the waiting send as `transfer`.
+  app.get('/api/home', route(async (req, res) => {
+    const officeId = clean(req.query.officeId);
+    const me = req.user;
+    const manager = me.role === 'admin' || (me.role === 'office_admin' && Boolean(me.officeId));
+    const [department] = me.departmentId ? await query('SELECT * FROM departments WHERE id = ?', [me.departmentId]) : [];
+    const departmentId = department?.id ?? null;
+
+    const byOffice = (column) => (officeId ? { sql: ` AND ${column} = ?`, params: [officeId] } : { sql: '', params: [] });
+    const lettersOffice = byOffice('letters.office_id');
+    const areasOffice = byOffice('areas.office_id');
+
+    // Waiting sends matching `where`, each with its letter, oldest first (the longest waiting at the top).
+    const pending = async (where, params, limit = 20) => {
+      const transfers = await query(
+        `SELECT letter_transfers.* FROM letter_transfers JOIN letters ON letters.id = letter_transfers.letter_id
+         WHERE letter_transfers.received_date IS NULL AND ${where} ORDER BY letter_transfers.sent_at LIMIT ?`,
+        [...params, limit]
+      );
+      if (!transfers.length) return [];
+      const letters = await query(`${LETTERS} WHERE letters.id IN (?)`, [transfers.map((t) => t.letter_id)]);
+      const byId = new Map(letters.map((r) => [r.id, summary(r)]));
+      return transfers.filter((t) => byId.has(t.letter_id)).map((t) => ({ ...byId.get(t.letter_id), transfer: toTransfer(t) }));
+    };
+    const summary = (r) => {
+      const { content, ...letter } = toLetter(r);
+      return { ...letter, hasContent: Boolean(content) };
+    };
+    const none = Promise.resolve([]);
+
+    const [[counts], [boxes], toReceive, sentAwaiting, withDepartment, [{ withCount }], inTransit, recent] = await Promise.all([
+      query(
+        `SELECT COUNT(*) AS files FROM files LEFT JOIN boxes ON boxes.id = files.box_id LEFT JOIN areas ON areas.id = boxes.area_id
+         WHERE 1 = 1${areasOffice.sql}`,
+        areasOffice.params
+      ),
+      query(
+        `SELECT COUNT(*) AS boxes,
+           (SELECT COUNT(*) FROM letters WHERE direction = 'inbound'${lettersOffice.sql}) AS inbound,
+           (SELECT COUNT(*) FROM letters WHERE direction = 'outbound'${lettersOffice.sql}) AS outbound,
+           (SELECT COUNT(*) FROM letters WHERE NOT EXISTS (SELECT 1 FROM letter_files WHERE letter_files.letter_id = letters.id)${lettersOffice.sql}) AS unfiled
+         FROM boxes JOIN areas ON areas.id = boxes.area_id WHERE 1 = 1${areasOffice.sql}`,
+        [...lettersOffice.params, ...lettersOffice.params, ...lettersOffice.params, ...areasOffice.params]
+      ),
+      departmentId ? pending('letter_transfers.to_department_id = ?', [departmentId]) : none,
+      departmentId ? pending('letter_transfers.from_department_id = ?', [departmentId]) : none,
+      departmentId
+        ? query(
+            `${LETTERS} WHERE letters.department_id = ? AND NOT EXISTS (SELECT 1 FROM letter_transfers
+               WHERE letter_transfers.letter_id = letters.id AND letter_transfers.received_date IS NULL)
+             ORDER BY COALESCE(letters.updated_at, letters.created_at) DESC LIMIT 8`,
+            [departmentId]
+          )
+        : none,
+      departmentId
+        ? query(
+            `SELECT COUNT(*) AS withCount FROM letters WHERE letters.department_id = ? AND NOT EXISTS (SELECT 1 FROM letter_transfers
+               WHERE letter_transfers.letter_id = letters.id AND letter_transfers.received_date IS NULL)`,
+            [departmentId]
+          )
+        : Promise.resolve([{ withCount: 0 }]),
+      // An office admin sees their own office's letters on the way; an admin, those of the office picked (or all).
+      manager
+        ? me.role === 'admin'
+          ? pending(`1 = 1${lettersOffice.sql}`, lettersOffice.params)
+          : pending('letters.office_id = ?', [me.officeId])
+        : none,
+      query(`${LETTERS} WHERE 1 = 1${lettersOffice.sql} ORDER BY letters.created_at DESC LIMIT 6`, lettersOffice.params),
+    ]);
+
+    res.json({
+      department: department ? toDepartment(department) : null,
+      counts: {
+        files: Number(counts.files),
+        boxes: Number(boxes.boxes),
+        inbound: Number(boxes.inbound),
+        outbound: Number(boxes.outbound),
+        unfiled: Number(boxes.unfiled),
+      },
+      toReceive,
+      sentAwaiting,
+      withDepartment: withDepartment.map(summary),
+      withDepartmentCount: Number(withCount),
+      inTransit,
+      recent: recent.map(summary),
+    });
   }));
 
   app.delete('/api/letters/:id', route(async (req, res) => {

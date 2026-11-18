@@ -135,6 +135,7 @@ export default function LettersPage() {
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge variant="outline">{l.statusName}</Badge>
                     {l.departmentName && <Badge variant="secondary">{l.departmentName}</Badge>}
+                    {l.awaitingReceipt && <Badge variant="outline">Not received</Badge>}
                   </div>
                   {l.letterNos.length > 0 && <p className="mt-1.5 text-sm font-semibold break-words">{l.letterNos.join(', ')}</p>}
                   <p className="mt-1.5 font-medium break-words">{l.subject}</p>
@@ -192,7 +193,10 @@ export default function LettersPage() {
                     </TableCell>
                     <TableCell>{l.referenceNo || '—'}</TableCell>
                     <TableCell><Badge variant="outline">{l.statusName}</Badge></TableCell>
-                    <TableCell>{l.departmentName ?? <span className="text-muted-foreground">Unassigned</span>}</TableCell>
+                    <TableCell>
+                      {l.departmentName ?? <span className="text-muted-foreground">Unassigned</span>}
+                      {l.awaitingReceipt && <span className="block text-xs text-muted-foreground">Not received yet</span>}
+                    </TableCell>
                     {allOffices && <TableCell>{l.officeName}</TableCell>}
                     <TableCell className="text-right">{l.fileCount || '—'}</TableCell>
                     <TableCell className="w-10 text-right">{actions(l)}</TableCell>

@@ -57,7 +57,7 @@ export default function LabelPage() {
   const location = useLocation();
   // Back returns to the page the labels were opened from (keeping its search); a label page opened directly
   // (a bookmark or a new tab) has nowhere to go back to, so it goes to Files or Settings.
-  const fallback = kind === 'file' ? '/' : '/settings/boxes';
+  const fallback = kind === 'file' ? '/files' : '/settings/boxes';
   const goBack = (e) => {
     if (location.key === 'default') return;
     e.preventDefault();

@@ -10,7 +10,7 @@ export default function NotFound() {
       </CardHeader>
       <CardContent>
         <Button variant="outline" asChild>
-          <Link to="/">Back to search</Link>
+          <Link to="/">Back to home</Link>
         </Button>
       </CardContent>
     </Card>

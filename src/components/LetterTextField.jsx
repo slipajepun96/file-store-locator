@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 
-// The letter's text, for searching by what it says. "Scan photo / PDF" takes or picks photos of the pages (on a
-// phone it offers the camera) or PDFs, reads their text and adds it to the box below, where it can be corrected.
+// "Scan photo / PDF": takes or picks photos of the pages (on a phone it offers the camera) or PDFs, reads their
+// text and adds it to the letter's text (value / onChange), where it can be corrected in LetterTextField below.
 // Scanning again adds the new pages after the text already there. Photos and PDFs themselves are never kept.
 // When the server reads letters with Claude, it also finds the letter's details (reference, date, sender, recipient,
 // subject); they're passed to onFields(fields), which fills in the form and returns the names of what it filled.
-export default function LetterTextField({ id, value, onChange, onFields }) {
+// It sits above the details in the form, since it can fill them in.
+export function LetterScan({ value, onChange, onFields }) {
   const inputRef = useRef(null);
   const [progress, setProgress] = useState(null);
   const [message, setMessage] = useState(null);
@@ -94,27 +95,35 @@ export default function LetterTextField({ id, value, onChange, onFields }) {
   }
 
   return (
+    <div className="flex flex-col gap-2 rounded-lg border border-dashed p-3 sm:flex-row sm:items-center sm:gap-3">
+      <Button type="button" variant="outline" className="shrink-0" onClick={() => inputRef.current?.click()} disabled={Boolean(progress)}>
+        {progress ? <LoaderCircle className="animate-spin" /> : <Camera />} Scan photo / PDF
+      </Button>
+      <input ref={inputRef} type="file" accept="image/*,application/pdf,.pdf" multiple className="hidden" onChange={scan} />
+      <p role="status" className={message && !message.ok ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+        {progress ||
+          message?.text ||
+          "Reads the letter's text, and can fill in its details. Photos and PDFs are only read, never kept."}
+      </p>
+    </div>
+  );
+}
+
+// The letter's text, for searching by what it says: filled by LetterScan, or typed or pasted here.
+export default function LetterTextField({ id, value, onChange }) {
+  return (
     <div className="grid gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Label htmlFor={id}>
-          Letter text <span className="font-normal text-muted-foreground">(optional)</span>
-        </Label>
-        <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()} disabled={Boolean(progress)}>
-          {progress ? <LoaderCircle className="animate-spin" /> : <Camera />} Scan photo / PDF
-        </Button>
-        <input ref={inputRef} type="file" accept="image/*,application/pdf,.pdf" multiple className="hidden" onChange={scan} />
-      </div>
+      <Label htmlFor={id}>
+        Letter text <span className="font-normal text-muted-foreground">(optional)</span>
+      </Label>
       <Textarea
         id={id}
         rows={4}
         className="max-h-64 overflow-y-auto"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Scan the letter's pages or its PDF, or type or paste its text, so it can be found by what it says."
+        placeholder="Scan the letter above, or type or paste its text, so it can be found by what it says. Check scanned text for mistakes."
       />
-      <p className={message && !message.ok ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
-        {progress || message?.text || 'Photos and PDFs are only used to read the text and are not kept. Check the text for mistakes.'}
-      </p>
     </div>
   );
 }

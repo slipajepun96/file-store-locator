@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { ROLE_NAMES, useAuth } from '@/auth.jsx';
 import { useOffices } from '@/office.jsx';
@@ -12,6 +12,11 @@ export default function AccountPage() {
   const { officeName } = useOffices();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [message, setMessage] = useState(null);
+  const [departmentName, setDepartmentName] = useState('');
+  useEffect(() => {
+    if (user.departmentId)
+      api.get('/departments').then((ds) => setDepartmentName(ds.find((d) => d.id === user.departmentId)?.name ?? '')).catch(() => {});
+  }, [user.departmentId]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -32,7 +37,8 @@ export default function AccountPage() {
       <CardHeader>
         <CardTitle className="text-2xl">My Account</CardTitle>
         <CardDescription>{user.name} · {user.email || `@${user.username}`} · {ROLE_NAMES[user.role] ?? user.role}
-          {user.officeId && ` · ${officeName(user.officeId)}`}</CardDescription>
+          {user.officeId && ` · ${officeName(user.officeId)}`}
+          {departmentName && ` · ${departmentName}`}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
         {!user.hasPassword && <p className="text-sm">You sign in with Google ({user.email}). There is no password to manage here.</p>}

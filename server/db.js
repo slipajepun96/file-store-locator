@@ -167,6 +167,38 @@ const SCHEMA = [
     INDEX letter_updates_letter (letter_id, created_at),
     CONSTRAINT letter_updates_letter FOREIGN KEY (letter_id) REFERENCES letters (id) ON DELETE CASCADE
   ) ${TABLE_OPTIONS}`,
+  // The shared list of senders and recipients offered on letters (see server/correspondents.js). Letters keep the
+  // name as text, so there's no foreign key either way.
+  `CREATE TABLE IF NOT EXISTS correspondents (
+    id CHAR(36) PRIMARY KEY,
+    name VARCHAR(300) NOT NULL UNIQUE,
+    created_by_name VARCHAR(200) NULL,
+    created_at DATETIME(3) NOT NULL
+  ) ${TABLE_OPTIONS}`,
+  // A letter sent from one department to another. sent_at is stamped when it's sent; received_date is picked by
+  // the receiving department when they mark it received (NULL until then: the letter is on its way). Department
+  // names are copied in so the record stays as it was if a department is renamed or removed. A letter has at most one
+  // transfer waiting to be received at a time.
+  `CREATE TABLE IF NOT EXISTS letter_transfers (
+    id CHAR(36) PRIMARY KEY,
+    letter_id CHAR(36) NOT NULL,
+    from_department_id CHAR(36) NULL,
+    from_department_name VARCHAR(200) NULL,
+    to_department_id CHAR(36) NULL,
+    to_department_name VARCHAR(200) NOT NULL,
+    note TEXT NULL,
+    sent_at DATETIME(3) NOT NULL,
+    sent_by CHAR(36) NULL,
+    sent_by_name VARCHAR(200) NULL,
+    received_date DATE NULL,
+    received_by CHAR(36) NULL,
+    received_by_name VARCHAR(200) NULL,
+    received_at DATETIME(3) NULL,
+    INDEX letter_transfers_letter (letter_id, sent_at),
+    CONSTRAINT letter_transfers_letter FOREIGN KEY (letter_id) REFERENCES letters (id) ON DELETE CASCADE,
+    CONSTRAINT letter_transfers_from FOREIGN KEY (from_department_id) REFERENCES departments (id) ON DELETE SET NULL,
+    CONSTRAINT letter_transfers_to FOREIGN KEY (to_department_id) REFERENCES departments (id) ON DELETE SET NULL
+  ) ${TABLE_OPTIONS}`,
   // The audit trail: one row per change anyone makes (see audit.js). Names are copied in, and there are no foreign
   // keys, so entries stay as they were even after the user or thing they mention is removed.
   `CREATE TABLE IF NOT EXISTS audit_log (
@@ -259,13 +291,20 @@ async function migrateLetterDirections() {
 }
 
 export async function initDb() {
+  const newCorrespondents = !(await hasTable('correspondents'));
   for (const sql of SCHEMA) await query(sql);
   await migrateToOffices();
   await migrateLetterDirections();
   await migrateLetterNumbers();
   if (!(await hasColumn('letters', 'content'))) await query('ALTER TABLE letters ADD COLUMN content MEDIUMTEXT NULL AFTER notes');
+  await migrateUserDepartments();
   await seedLetterStatuses();
+  // The sender/recipient list starts with the names already on letters, once, when it's first made.
+  if (newCorrespondents) await (await import('./correspondents.js')).seedCorrespondents();
 }
+
+const hasTable = async (table) =>
+  (await query('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?', [table])).length > 0;
 
 const hasColumn = async (table, column) =>
   (
@@ -274,6 +313,18 @@ const hasColumn = async (table, column) =>
       [table, column]
     )
   ).length > 0;
+
+// Each user can belong to one department, which they send and receive letters for (see server/letters.js).
+// Added after the tables are made, since users is created before departments. Removing a department leaves its
+// people with none.
+async function migrateUserDepartments() {
+  if (await hasColumn('users', 'department_id')) return;
+  await query(
+    `ALTER TABLE users
+       ADD COLUMN department_id CHAR(36) NULL AFTER office_id,
+       ADD CONSTRAINT users_department FOREIGN KEY (department_id) REFERENCES departments (id) ON DELETE SET NULL`
+  );
+}
 
 // Databases created before offices existed: put every existing area into a "Main office",
 // and give users a home office and the office_admin role.
@@ -330,6 +381,7 @@ export const toUser = (r) =>
     approvedBy: r.approved_by,
     lastLoginAt: r.last_login_at,
     officeId: r.office_id ?? null,
+    departmentId: r.department_id ?? null,
   };
 
 export const toOffice = (r) => r && { id: r.id, name: r.name, createdAt: r.created_at };

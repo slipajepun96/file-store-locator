@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Building2, LogOut, Package, UserRound } from 'lucide-react';
 import { isManager, useAuth } from '@/auth.jsx';
 import { useOffices } from '@/office.jsx';
@@ -25,11 +25,11 @@ export default function Layout() {
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 bg-header text-header-foreground shadow-sm">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-4 sm:py-3">
-          <div className="flex items-center gap-2 font-semibold">
+          <Link to="/" className="flex items-center gap-2 font-semibold">
             <Package className="size-5 shrink-0 text-lime" />
             <span className="sm:hidden">Files</span>
             <span className="hidden sm:inline">File Store Locator</span>
-          </div>
+          </Link>
 
           <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto sm:flex-1">
             {offices.length > 0 && (
@@ -45,7 +45,8 @@ export default function Layout() {
               </div>
             )}
             <nav className="flex shrink-0 gap-1">
-              <NavLink to="/" end className={navClass}>Files</NavLink>
+              <NavLink to="/" end className={navClass}>Home</NavLink>
+              <NavLink to="/files" className={navClass}>Files</NavLink>
               <NavLink to="/letters" className={navClass}>Letters</NavLink>
               {isManager(user) && (
                 <NavLink to="/settings" className={navClass}>

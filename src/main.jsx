@@ -5,6 +5,7 @@ import { AuthProvider, RequireAuth, RequireManager } from '@/auth.jsx';
 import { OfficeProvider } from '@/office.jsx';
 import Layout from '@/components/Layout.jsx';
 import LoginPage from '@/pages/LoginPage.jsx';
+import HomePage from '@/pages/HomePage.jsx';
 import SearchPage from '@/pages/SearchPage.jsx';
 import SettingsPage from '@/pages/SettingsPage.jsx';
 import LettersPage from '@/pages/LettersPage.jsx';
@@ -28,9 +29,10 @@ const router = createBrowserRouter([
         path: '/',
         element: <Layout />,
         children: [
-          { index: true, element: <SearchPage /> },
+          { index: true, element: <HomePage /> },
+          { path: 'files', element: <SearchPage /> },
           // Registering a file is now part of the Files page.
-          { path: 'files/new', element: <Navigate to="/" replace /> },
+          { path: 'files/new', element: <Navigate to="/files" replace /> },
           { path: 'boxes/:boxId', element: <BoxPage /> },
           { path: 'account', element: <AccountPage /> },
           { path: 'letters', element: <LettersPage /> },

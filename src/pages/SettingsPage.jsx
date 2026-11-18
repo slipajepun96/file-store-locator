@@ -18,6 +18,7 @@ import RowMenu from '@/components/RowMenu.jsx';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useLive } from '@/live.js';
 
 const dangerGhost = 'text-destructive hover:text-destructive';
 
@@ -137,10 +138,13 @@ function UsersSection({ managedOfficeId }) {
   const [notice, setNotice] = useState('');
 
   const load = () => api.get('/users').then(setUsers);
+  const loadDepartments = () => api.get('/departments').then(setDepartments);
   useEffect(() => {
     load();
-    api.get('/departments').then(setDepartments);
+    loadDepartments();
   }, []);
+  useLive(['account', 'office'], () => load().catch(() => {}));
+  useLive(['department'], () => loadDepartments().catch(() => {}));
   const departmentName = (departmentId) => departments.find((d) => d.id === departmentId)?.name;
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -457,6 +461,10 @@ function BoxesSection({ managedOfficeId }) {
   const loadAreas = () => (managedOfficeId ? api.get(`/areas${office}`).then(setAreas) : setAreas([]));
   const loadBoxes = () => (managedOfficeId ? api.get(`/boxes${office}`).then(setBoxes) : setBoxes([]));
 
+  useLive(['area', 'box', 'file', 'office'], () => {
+    loadAreas();
+    loadBoxes();
+  });
   useEffect(() => {
     loadAreas();
     loadBoxes();
@@ -647,6 +655,9 @@ export default function SettingsPage() {
   useEffect(() => {
     if (section === 'correspondents') loadCorrespondents();
   }, [section]);
+  useLive(['status'], () => section === 'statuses' && loadStatuses());
+  useLive(['department'], () => section === 'departments' && loadDepartments());
+  useLive(['correspondent'], () => section === 'correspondents' && loadCorrespondents());
 
   useEffect(() => {
     if (section === 'statuses') loadStatuses();

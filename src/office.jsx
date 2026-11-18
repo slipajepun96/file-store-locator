@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { useAuth } from '@/auth.jsx';
+import { useLive } from '@/live.js';
 
 const OfficeContext = createContext(null);
 const KEY = 'officeId';
@@ -52,6 +53,7 @@ export function OfficeProvider({ children }) {
   // A remembered office that has since been removed falls back to all offices.
   const officeId = !loaded || wanted === '' || offices.some((o) => o.id === wanted) ? wanted : '';
   const officeName = (id) => offices.find((o) => o.id === id)?.name ?? '—';
+  useLive(['office'], () => user && reload());
 
   return (
     <OfficeContext.Provider value={{ offices, loaded, officeId, setOfficeId, officeName, reload }}>

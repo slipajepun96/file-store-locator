@@ -14,6 +14,7 @@ import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdow
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useLive } from '@/live.js';
 
 const TAB_ICONS = { inbound: Inbox, outbound: Send };
 
@@ -77,6 +78,7 @@ export default function LettersPage() {
     const t = setTimeout(load, 200);
     return () => clearTimeout(t);
   }, [direction, q, officeId, statusId, departmentId]);
+  useLive(['letter', 'file', 'status', 'department', 'office', 'correspondent'], load);
 
   const canRemove = (l) => canManageOffice(user, l.officeId) || l.createdBy === user.id;
 

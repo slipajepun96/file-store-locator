@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useLive } from '@/live.js';
 
 export default function BoxPage() {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ export default function BoxPage() {
     setSelected([]);
     api.get(`/boxes/${boxId}`).then(setBox).catch((e) => setError(e.message));
   }, [boxId]);
+  useLive(['box', 'file', 'area', 'office'], () => api.get(`/boxes/${boxId}`).then(setBox).catch((e) => setError(e.message)));
 
   if (error) return <Card><CardContent className="text-destructive">{error}</CardContent></Card>;
   if (!box) return <Card><CardContent className="text-muted-foreground">Loading…</CardContent></Card>;

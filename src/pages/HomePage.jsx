@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useLive } from '@/live.js';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -113,6 +114,7 @@ export default function HomePage() {
   useEffect(() => {
     load();
   }, [officeId]);
+  useLive(['letter', 'file', 'box', 'area', 'account', 'department', 'status', 'office'], load);
 
   const department = home?.department;
   const manager = isManager(user);

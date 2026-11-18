@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '@/api.js';
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { useLive } from '@/live.js';
 
 export const DIRECTIONS = ['inbound', 'outbound'];
 
@@ -41,13 +42,15 @@ export const LETTER_TEXT = {
 export function useLetterLists(direction) {
   const [statuses, setStatuses] = useState([]);
   const [departments, setDepartments] = useState([]);
-  useEffect(() => {
-    if (!direction) return;
+  const load = () =>
     Promise.all([api.get(`/letter-statuses?direction=${direction}`), api.get('/departments')]).then(([s, d]) => {
       setStatuses(s);
       setDepartments(d);
     });
+  useEffect(() => {
+    if (direction) load();
   }, [direction]);
+  useLive(['status', 'department'], () => direction && load().catch(() => {}));
   return { statuses, departments };
 }
 

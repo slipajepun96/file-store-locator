@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Pencil, Send, Trash2, Undo2 } from 'lucide-react';
 import { api } from '@/api.js';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useLive } from '@/live.js';
 
 // A letter's text, cut to a few lines with "Show all" when it's long.
 const COLLAPSED_CHARS = 700;
@@ -204,6 +205,7 @@ export default function LetterPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [letter, setLetter] = useState(null);
+  const letterRef = useRef(null);
   // Statuses load once the letter (and so its direction) is known.
   const { statuses, departments } = useLetterLists(letter?.direction);
   const [error, setError] = useState('');
@@ -211,18 +213,27 @@ export default function LetterPage() {
   const [update, setUpdate] = useState({ statusId: '', note: '' });
   const [updateMsg, setUpdateMsg] = useState(null);
 
-  const load = () =>
+  const load = (keepForm = false) =>
     api
       .get(`/letters/${letterId}`)
       .then((l) => {
+        // A live reload (keepForm) keeps a note being typed, and a status picked but not saved yet.
+        const old = letterRef.current;
+        setUpdate((u) =>
+          keepForm && old && old.id === l.id && (u.note.trim() || u.statusId !== old.statusId) ? u : { statusId: l.statusId, note: '' }
+        );
+        letterRef.current = l;
         setLetter(l);
-        setUpdate({ statusId: l.statusId, note: '' });
       })
       .catch((e) => setError(e.message));
 
   useEffect(() => {
     load();
   }, [letterId]);
+  useLive(['letter', 'file', 'box', 'status', 'department', 'office'], () => load(true), {
+    // Other letters' changes don't touch this one.
+    filter: (e) => e.type !== 'letter' || !e.id || e.id === letterId,
+  });
 
   // The letter's tab on the Letters page.
   const listUrl = letter?.direction === 'outbound' ? '/letters?type=outbound' : '/letters';
@@ -359,7 +370,7 @@ export default function LetterPage() {
         </div>
 
         <div className="grid gap-4 sm:gap-6">
-          <DepartmentCard letter={letter} departments={departments} user={user} onChanged={load} />
+          <DepartmentCard letter={letter} departments={departments} user={user} onChanged={() => load()} />
 
           <Card>
             <CardHeader>
@@ -405,7 +416,7 @@ export default function LetterPage() {
         </div>
       </div>
 
-      <LetterFormDialog open={editing} onOpenChange={setEditing} letter={letter} onSaved={load} />
+      <LetterFormDialog open={editing} onOpenChange={setEditing} letter={letter} onSaved={() => load()} />
     </>
   );
 }

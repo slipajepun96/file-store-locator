@@ -81,7 +81,8 @@ export default function LetterFormDialog({ open, onOpenChange, letter, direction
           }
         : blank(isAdmin ? officeId || user.officeId || '' : user.officeId || '', direction)
     );
-  }, [open, letter, direction]);
+    // By id, so a live reload of the same letter doesn't wipe what's being typed.
+  }, [open, letter?.id, direction]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target?.value ?? e }));
 

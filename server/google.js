@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { query, toUser } from './db.js';
 import { startSession } from './auth.js';
 import { recordAudit } from './audit.js';
+import { broadcast } from './events.js';
 
 // Google OAuth 2.0 (authorization code + PKCE), done on the server so no secret reaches the browser.
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -123,12 +124,14 @@ export async function resolveGoogleUser(profile) {
   user.lastLoginAt = now;
 
   const values = [user.name, user.email, user.googleId, user.role, user.status, user.approvedAt, user.approvedBy, now];
-  if (isNew)
+  if (isNew) {
     await query(
       'INSERT INTO users (name, email, google_id, role, status, approved_at, approved_by, last_login_at, id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [...values, user.id, user.createdAt]
     );
-  else
+    // A new sign-up request: admins' pages show it straight away.
+    broadcast('account', user.id);
+  } else
     await query(
       'UPDATE users SET name = ?, email = ?, google_id = ?, role = ?, status = ?, approved_at = ?, approved_by = ?, last_login_at = ? WHERE id = ?',
       [...values, user.id]

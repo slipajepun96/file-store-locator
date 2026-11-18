@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { api, setUnauthorizedHandler } from '@/api.js';
+import { startLive, stopLive, useLive } from '@/live.js';
 
 const AuthContext = createContext(null);
 
@@ -38,6 +39,14 @@ export function AuthProvider({ children }) {
   // Re-reads the signed-in user, e.g. to update the admin's pending-approval count.
   const refresh = () => api.get('/auth/me').then(setUser).catch(() => {});
   const login = async (username, password) => setUser(await api.post('/auth/login', { username, password }));
+
+  // Live updates while signed in. Account changes (role, office, department, the sign-up count, being blocked)
+  // re-read the signed-in user; a blocked or removed account is then signed out.
+  useEffect(() => {
+    if (!user) return stopLive();
+    startLive();
+  }, [Boolean(user)]);
+  useLive(['account', 'department', 'office'], () => user && refresh());
   const logout = async () => {
     await api.post('/auth/logout').catch(() => {});
     setUser(null);

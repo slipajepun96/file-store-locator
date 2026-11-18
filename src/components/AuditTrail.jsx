@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useLive } from '@/live.js';
 
 // What each kind of entry is about, for the filter and the badge on each row.
 const TYPE_LABELS = {
@@ -61,6 +62,9 @@ const typeBadge = (e) => (
 );
 
 // Admins see every office's entries; an office admin sees their own office's.
+// Entries the server sends per page (PAGE_SIZE in server/audit.js).
+const PAGE_SIZE = 50;
+
 export default function AuditTrail() {
   const [filters, setFilters] = useState({ q: '', type: ALL, from: '', to: '' });
   const [entries, setEntries] = useState([]);
@@ -89,6 +93,12 @@ export default function AuditTrail() {
     const t = setTimeout(() => load(false), 300);
     return () => clearTimeout(t);
   }, [filters]);
+
+  useLive(
+    ['letter', 'file', 'box', 'area', 'office', 'account', 'status', 'department', 'correspondent', 'settings'],
+    () => entries.length <= PAGE_SIZE && load(false),
+    { delay: 1000 }
+  );
 
   const set = (key) => (e) => setFilters((f) => ({ ...f, [key]: e.target.value }));
   const filtered = filters.q || filters.type !== ALL || filters.from || filters.to;

@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useLive } from '@/live.js';
 
 const SELECTED_KEY = 'selectedFiles';
 
@@ -53,6 +54,7 @@ export default function SearchPage() {
     }, 200);
     return () => clearTimeout(t);
   }, [q, officeId, reloadKey]);
+  useLive(['file', 'box', 'area', 'office', 'letter'], () => setReloadKey((k) => k + 1));
 
   const canRemove = (f) => canManageOffice(user, f.officeId) || f.createdBy === user.id;
 

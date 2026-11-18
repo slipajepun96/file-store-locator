@@ -4,6 +4,7 @@ import { api } from '@/api.js';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useLive } from '@/live.js';
 
 const MAX_SHOWN = 8;
 const norm = (s) => s.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -15,6 +16,7 @@ export function useCorrespondents(active = true) {
   useEffect(() => {
     if (active) reload();
   }, [active]);
+  useLive(['correspondent', 'letter'], () => active && reload());
   return { list, reload };
 }
 

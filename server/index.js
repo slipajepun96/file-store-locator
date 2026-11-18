@@ -28,6 +28,7 @@ import { audit, auditTrail, changes, describeChanges, registerAuditRoutes } from
 import { finishGoogleLogin, googleConfigured, startGoogleLogin } from './google.js';
 import { registerLetterRoutes } from './letters.js';
 import { registerCorrespondentRoutes } from './correspondents.js';
+import { liveEvents, registerEventRoutes } from './events.js';
 import { clean, id, likeText, route } from './util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,8 @@ app.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Records every change made through the API (see audit.js).
 app.use('/api', auditTrail);
+// Tells open pages what changed, so they update live (server/events.js).
+app.use('/api', liveEvents);
 
 // ---- Auth ----
 // Tells the login page which sign-in options to show.
@@ -651,6 +654,7 @@ app.delete('/api/files/:id', route(async (req, res) => {
 registerLetterRoutes(app);
 registerCorrespondentRoutes(app);
 registerAuditRoutes(app);
+registerEventRoutes(app);
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
